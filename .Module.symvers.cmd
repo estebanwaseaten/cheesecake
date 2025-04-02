@@ -1,0 +1,1 @@
+savedcmd_/home/wegkamp/development/cheesecake/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/wegkamp/development/cheesecake/Module.symvers -T /home/wegkamp/development/cheesecake/modules.order -i Module.symvers -e 

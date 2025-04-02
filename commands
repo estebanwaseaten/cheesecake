@@ -1,0 +1,7 @@
+make
+sudo insmod ....ko
+sudo rmmod ....ko
+dmesg
+lsmod
+
+
