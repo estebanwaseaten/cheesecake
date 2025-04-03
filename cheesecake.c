@@ -25,6 +25,7 @@ static struct class *dev_class;
 //character device in /dev:
 static struct cdev cheesecake_cdev;
 
+// PROCESS PROCESS PROCESS
 // define what is in /proc/...
 static struct proc_dir_entry* my_proc_dir_entry;
 static const struct proc_ops pops =		//replace struct file_operations with struct proc_ops for kernel version 5.6 or later
@@ -33,13 +34,15 @@ static const struct proc_ops pops =		//replace struct file_operations with struc
 	.proc_read = myProcRead		//what happens when you read /proc/cheesecakedrivercd
 };
 
-
-
+// DEVICE DEVICE DEVICE
 //define what happens with /dev/...
 static int      cheesecake_open(struct inode *inode, struct file *file);
 static int      cheesecake_release(struct inode *inode, struct file *file);
 static ssize_t  cheesecake_read(struct file *filp, char __user *buf, size_t len,loff_t * off);
 static ssize_t  cheesecake_write(struct file *filp, const char *buf, size_t len, loff_t * off);
+
+static long cheesecake_ioctl( struct file *file, unsigned int cmd, unsigned long arg );
+
 
 static struct file_operations fops =
 {
@@ -47,19 +50,19 @@ static struct file_operations fops =
 .read           = cheesecake_read,
 .write          = cheesecake_write,
 .open           = cheesecake_open,
+.unlocked_ioctl = cheesecake_ioctl,
 .release        = cheesecake_release,
 };
 
+// PARAMETER PARAMETER PARAMETER
 //define what is happening in /sys/module/.../parameters
 const struct kernel_param_ops my_param_ops =
 {
         .set = &testParam_callback, // Use our setter ...
         .get = &param_get_int, // .. and standard getter
 };
-
 //generates parameter in /sys/module/.../parameters/...
 module_param_cb(myTestParam, &my_param_ops, &myTestParam, S_IRUGO|S_IWUSR );		//whenever cb_valueETX is modified, the .set callback of my_param_ops is called
-
 int testParam_callback( const char *val, const struct kernel_param *kp )
 {
 	int res = param_set_int(val, kp);
@@ -114,6 +117,11 @@ static ssize_t cheesecake_write(struct file *filp, const char *buf, size_t len, 
 	return len;
 }
 
+static long cheesecake_ioctl( struct file *file, unsigned int cmd, unsigned long arg )
+{
+	return 0;
+}
+
 
 static int __init cheesecake_init(void)
 {
@@ -126,19 +134,13 @@ static int __init cheesecake_init(void)
 		//generate an entry in /proc that one can read from (and potentially write to --> this is connected to the custom_read() function, which is supposed to mimick a file read...)
 		my_proc_dir_entry = proc_create("cheesePI", 0666, NULL, &pops );
 
-		//create a device file for userspace com.
-		//create manually by sudo mknod ...
-		// 1. create class
+		cdev_init( &cheesecake_cdev, &fops );
+		cdev_add( &cheesecake_cdev, myDev, 1 );
 
-		// 2. create device
-		//device_create( dev_class, NULL, myDev, NULL, "cheesecake_device" );
-
-
-		//create char device in /dev:
-		 cdev_init( &cheesecake_cdev, &fops );
-		 cdev_add( &cheesecake_cdev, myDev, 1 );
-		 dev_class = class_create( "cheesePI" );
-		 device_create(dev_class, NULL, myDev, NULL, "cheesePI_device" );
+		//create class of devices
+		dev_class = class_create( "cheesecake_class" );
+		//create device in /dev
+		device_create( dev_class, NULL, myDev, NULL, "cheesePI_device" );
 
 		return 0;
 }
@@ -146,13 +148,11 @@ static void __exit cheesecake_exit(void)
 {
 		pr_info( "Uninstalled Cheesecake :(\n" );
 
-
-
-
-
 		device_destroy( dev_class, myDev );
 		class_destroy( dev_class );
+
 		cdev_del(&cheesecake_cdev);
+
 		remove_proc_entry( "cheesePI", NULL );
 
 		//dealloc minor&major numbers
