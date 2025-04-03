@@ -17,14 +17,17 @@
 #include <linux/cdev.h>
 #include <linux/kdev_t.h>
 
+#include <linux/of.h>	//device tree access
+
 #include <linux/delay.h>
 
+
+//#include <linux/gpio/driver.h>
+#include "SWDPI_raspi4.h"
+#include "SWDPI_raspi5.h"
 #include "SWDPI.h"	//public header
 
-#define RASPI_5_GPIO_BASE  0x0000001f000d0000
-#define RASPI_5_PADS_BASE  0x0000001f000f0000
 
-#define RASPI_4_GPIO_BASE  0x0
 
 
 MODULE_DESCRIPTION("SWD GPIO bitbang driver: SWDGPIOBBD");
@@ -85,6 +88,18 @@ static struct file_operations SWDGPIOBBD_fops =
 .release        = SWDGPIOBBD_release,
 };
 
+struct gpio_interface
+{
+	uint8_t (*configPin) (uint32_t pin, uint32_t setting);
+	void (*setPinOutput) (uint32_t pin);
+	void (*setPinInput) (uint32_t pin);
+	uint8_t (*readPin) (uint32_t pin);
+	void (*setPin) (uint32_t pin);
+	void (*unsetPin) (uint32_t pin);
+};
+
+struct gpio_interface SWDPI_gpio_interface;
+
 // PARAMETER PARAMETER PARAMETER
 //define what is happening in /sys/module/.../parameters
 //param to be set in sysfs
@@ -110,7 +125,7 @@ int testParam_callback( const char *val, const struct kernel_param *kp )
 
 
 
-// /proc/read
+// /proc/read - not sure if we need this...
 static ssize_t SWDGPIOBBD_ProcRead( struct file* file, char __user* user_buffer, size_t count, loff_t* offset )		// called via: cat /proc/cheesePI
 {
 	pr_info("Calling custom_read( struct file* file, char __user* user_buffer, size_t count, loff_t* offset ).");
@@ -145,10 +160,46 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		return -1;
 	}
 
-	struct device_node_ptr *soc_node;
-	soc_node = of_find_node_by_name(struct device_node *from, const char *name)
+	if( of_machine_is_compatible( "bcm2712" ) > 0 )
+	{
+		pr_info("is bcm2712 \n");
+	}
+	else if( of_machine_is_compatible( "bcm2711" ) > 0 )
+	{
+		pr_info("is bcm2711 \n");
+	}
+	else if( of_machine_is_compatible( "bcm2837" ) > 0 )
+	{
+		pr_info("is bcm2837 \n");
+	}
+	else if( of_machine_is_compatible( "bcm2836" ) > 0 )
+	{
+		pr_info("is bcm2836 \n");
+	}
+	else if( of_machine_is_compatible( "bcm2835" ) > 0 )
+	{
+		pr_info("is bcm2835 \n");
+	}
+
+	//of_find_compatible_node(struct device_node *from, const char *type, const char *compatible)
 
 
+	struct device_node *gpio_node = NULL;
+	gpio_node = of_find_node_by_name(NULL, "gpio");
+
+	if( gpio_node != NULL )
+	{
+		pr_info("Found gpio node!!! \n");
+	}
+
+
+	struct device_node *root_node = NULL;
+	root_node = of_find_all_nodes(NULL);
+
+	if( root_node != NULL )
+	{
+		pr_info("Found root node!!! \n");
+	}
 
 	//set some efault settings
 	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
@@ -158,13 +209,12 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	dataPin = 6;
 	dataPinState = 0;
 
-
 	speed_hz = 100000;	//100 kHz
 	period_us = 1000000/speed_hz;
 	half_period_us = period_us/2;
 
 	//need 8 bits for command, 8 bits for respones and 32 bits (multiple?) for data.
-
+	//SWDPI_gpio_interface.
 
 
 
