@@ -129,7 +129,7 @@ static int __init cheesecake_init(void)
 		//create a device file for userspace com.
 		//create manually by sudo mknod ...
 		// 1. create class
-		dev_class = class_create( "cheesePI" );
+
 		// 2. create device
 		//device_create( dev_class, NULL, myDev, NULL, "cheesecake_device" );
 
@@ -137,7 +137,8 @@ static int __init cheesecake_init(void)
 		//create char device in /dev:
 		 cdev_init( &cheesecake_cdev, &fops );
 		 cdev_add( &cheesecake_cdev, myDev, 1 );
-		 device_create(dev_class, NULL, myDev, NULL, "etx_device" );
+		 dev_class = class_create( "cheesePI" );
+		 device_create(dev_class, NULL, myDev, NULL, "cheesePI_device" );
 
 		return 0;
 }
@@ -145,14 +146,17 @@ static void __exit cheesecake_exit(void)
 {
 		pr_info( "Uninstalled Cheesecake :(\n" );
 
-		//dealloc minor&major numbers
-		unregister_chrdev_region( myDev, 1 );
 
-		remove_proc_entry( "cheesePI", NULL );
 
-		//device_destroy( dev_class, myDev );
+
+
+		device_destroy( dev_class, myDev );
 		class_destroy( dev_class );
 		cdev_del(&cheesecake_cdev);
+		remove_proc_entry( "cheesePI", NULL );
+
+		//dealloc minor&major numbers
+		unregister_chrdev_region( myDev, 1 );
 }
 
 module_init( cheesecake_init );
