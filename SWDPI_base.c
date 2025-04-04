@@ -25,10 +25,7 @@
 //#include <linux/gpio/driver.h>
 #include "SWDPI_raspi4.h"
 #include "SWDPI_raspi5.h"
-#include "SWDPI.h"	//public header
-
-
-
+#include "SWDPI_base.h"	//public header
 
 MODULE_DESCRIPTION("SWD GPIO bitbang driver: SWDGPIOBBD");
 MODULE_AUTHOR("dw42");
@@ -80,25 +77,35 @@ static long SWDGPIOBBD_ioctl( struct file *file, unsigned int cmd, unsigned long
 
 static struct file_operations SWDGPIOBBD_fops =
 {
-.owner          = THIS_MODULE,
-.read           = SWDGPIOBBD_read,
-.write          = SWDGPIOBBD_write,
-.open           = SWDGPIOBBD_open,
-.unlocked_ioctl = SWDGPIOBBD_ioctl,		//unlocked_ioctl was introduced. It lets each driver writer choose what lock to use instead
-.release        = SWDGPIOBBD_release,
+	.owner          = THIS_MODULE,
+	.read           = SWDGPIOBBD_read,
+	.write          = SWDGPIOBBD_write,
+	.open           = SWDGPIOBBD_open,
+	.unlocked_ioctl = SWDGPIOBBD_ioctl,		//unlocked_ioctl was introduced. It lets each driver writer choose what lock to use instead
+	.release        = SWDGPIOBBD_release,
 };
 
 struct gpio_interface
 {
-	uint8_t (*configPin) (uint32_t pin, uint32_t setting);
-	void (*setPinOutput) (uint32_t pin);
-	void (*setPinInput) (uint32_t pin);
-	uint8_t (*readPin) (uint32_t pin);
-	void (*setPin) (uint32_t pin);
-	void (*unsetPin) (uint32_t pin);
+	int (*init) ( void );
+	int (*configPin) (uint8_t, uint32_t);
+	int (*setPinOutput) (uint8_t);
+	int (*setPinInput) (uint8_t);
+	int (*readPin) (uint8_t);
+	int (*setPin) (uint8_t);
+	int (*unsetPin) (uint8_t);
 };
 
-struct gpio_interface SWDPI_gpio_interface;
+struct gpio_interface SWDPI_gpio_interface =
+{
+	.init = initRaspi4,
+	.configPin = configPinRaspi4,
+	.setPinOutput = setPinOutputRaspi4,
+	.setPinInput = setPinInputRaspi4,
+	.readPin = readPinRaspi4,
+	.setPin = setPinRaspi4,
+	.unsetPin = unsetPinRaspi4
+};
 
 // PARAMETER PARAMETER PARAMETER
 //define what is happening in /sys/module/.../parameters
@@ -160,28 +167,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		return -1;
 	}
 
-	if( of_machine_is_compatible( "bcm2712" ) > 0 )
-	{
-		pr_info("is bcm2712 \n");
-	}
-	else if( of_machine_is_compatible( "bcm2711" ) > 0 )
-	{
-		pr_info("is bcm2711 \n");
-	}
-	else if( of_machine_is_compatible( "bcm2837" ) > 0 )
-	{
-		pr_info("is bcm2837 \n");
-	}
-	else if( of_machine_is_compatible( "bcm2836" ) > 0 )
-	{
-		pr_info("is bcm2836 \n");
-	}
-	else if( of_machine_is_compatible( "bcm2835" ) > 0 )
-	{
-		pr_info("is bcm2835 \n");
-	}
-
-	//of_find_compatible_node(struct device_node *from, const char *type, const char *compatible)
+	SWDPI_gpio_interface.init();
 
 
 	struct device_node *gpio_node = NULL;
@@ -193,17 +179,31 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	}
 
 
-	struct device_node *root_node = NULL;
+/*	struct device_node *root_node = NULL;
 	root_node = of_find_all_nodes(NULL);
-
 	if( root_node != NULL )
 	{
 		pr_info("Found root node!!! \n");
-	}
 
-	//set some efault settings
+		//char *propValue;
+		int size;
+		const char *propValue = of_get_property(root_node, "compatible", &size);
+		if ( propValue == NULL)
+		{
+			pr_info("could not find property\n");
+			return -1;
+		}
+		/*else
+		{
+			for (size_t i = 0; i < size; i++)
+			{
+				printk( "%c", *(char*)(propValue + i));
+			}
+		}
+	}*/
+
+	//set some default settings
 	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
-
 	clockPin = 5;
 	clockPinState = 0;
 	dataPin = 6;
@@ -212,9 +212,6 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	speed_hz = 100000;	//100 kHz
 	period_us = 1000000/speed_hz;
 	half_period_us = period_us/2;
-
-	//need 8 bits for command, 8 bits for respones and 32 bits (multiple?) for data.
-	//SWDPI_gpio_interface.
 
 
 
@@ -307,6 +304,44 @@ static int __init SWDGPIOBBD_init(void)
 		SWDGPIOBBD_dev_class = class_create( "SWDPI_class" );
 		//create device in /dev
 		device_create( SWDGPIOBBD_dev_class, NULL, SWDGPIOBBD_dev_id, NULL, "SWDPI" );
+
+
+
+		//access correct function for each platform:
+		if( of_machine_is_compatible( "brcm,bcm2712" ) > 0 )
+		{
+			pr_info("is bcm2712 \n");
+		}
+		else if( of_machine_is_compatible( "brcm,bcm2711" ) > 0 )
+		{
+			pr_info("is bcm2711 \n");
+			initRaspi4();
+			SWDPI_gpio_interface = (struct gpio_interface)
+			{
+				.init = initRaspi4,
+				.configPin = configPinRaspi4,
+				.setPinOutput = setPinOutputRaspi4,
+				.setPinInput = setPinInputRaspi4,
+				.readPin = readPinRaspi4,
+				.setPin = setPinRaspi4,
+				.unsetPin = unsetPinRaspi4
+			};
+		}
+		else if( of_machine_is_compatible( "brcm,bcm2837" ) > 0 )
+		{
+			pr_info("is bcm2837 \n");
+		}
+		else if( of_machine_is_compatible( "brcm,bcm2836" ) > 0 )
+		{
+			pr_info("is bcm2836 \n");
+		}
+		else if( of_machine_is_compatible( "brcm,bcm2835" ) > 0 )
+		{
+			pr_info("is bcm2835 \n");
+		}
+
+
+
 
 		return 0;
 }
