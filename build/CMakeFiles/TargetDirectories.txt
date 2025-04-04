@@ -1,0 +1,3 @@
+/home/daniel/projects/cheesecake/build/CMakeFiles/cheesetest.dir
+/home/daniel/projects/cheesecake/build/CMakeFiles/edit_cache.dir
+/home/daniel/projects/cheesecake/build/CMakeFiles/rebuild_cache.dir

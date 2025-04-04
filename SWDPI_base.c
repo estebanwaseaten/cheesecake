@@ -20,6 +20,7 @@
 #include <linux/of.h>	//device tree access
 
 #include <linux/delay.h>
+#include <linux/spinlock.h>
 
 
 //#include <linux/gpio/driver.h>
@@ -34,6 +35,11 @@ MODULE_VERSION("0:1.0");
 
 
 void SWDGPIOBBD_connectionSequence(void);
+void SWDGPIOBBD_command( uint8_t cmd );
+void SWDGPIOBBD_receiveData( uint32_t *data );
+void SWDGPIOBBD_receiveAck( uint8_t *ack );
+void SWDGPIOBBD_cycleTurnaround2Read(void);
+void SWDGPIOBBD_cycleTurnaround2Write(void);
 uint8_t SWDGPIOBBD_cycleRead(void);
 void SWDGPIOBBD_cycleWrite( uint8_t bit );
 
@@ -47,9 +53,9 @@ static struct cdev SWDGPIOBBD_cdev;
 uint8_t SWDGPIOBBD_lock;
 
 uint8_t	clockPin;
-uint8_t clockPinState;
+//uint8_t clockPinState;
 uint8_t dataPin;
-uint8_t dataPinState;
+//uint8_t dataPinState;
 
 uint32_t period_us;
 uint32_t half_period_us;
@@ -88,23 +94,25 @@ static struct file_operations SWDGPIOBBD_fops =
 struct gpio_interface
 {
 	int (*init) ( void );
-	int (*configPin) (uint8_t, uint32_t);
+	int (*configPinPull) (uint8_t, uint32_t);
 	int (*setPinOutput) (uint8_t);
 	int (*setPinInput) (uint8_t);
 	int (*readPin) (uint8_t);
 	int (*setPin) (uint8_t);
 	int (*unsetPin) (uint8_t);
+	int (*cleanup) (void);
 };
 
 struct gpio_interface SWDPI_gpio_interface =
 {
 	.init = initRaspi4,
-	.configPin = configPinRaspi4,
+	.configPinPull = configPinPullRaspi4,
 	.setPinOutput = setPinOutputRaspi4,
 	.setPinInput = setPinInputRaspi4,
 	.readPin = readPinRaspi4,
 	.setPin = setPinRaspi4,
-	.unsetPin = unsetPinRaspi4
+	.unsetPin = unsetPinRaspi4,
+	.cleanup = cleanupRaspi4
 };
 
 // PARAMETER PARAMETER PARAMETER
@@ -167,16 +175,11 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		return -1;
 	}
 
+	//correct chip has been selected
 	SWDPI_gpio_interface.init();
 
 
-	struct device_node *gpio_node = NULL;
-	gpio_node = of_find_node_by_name(NULL, "gpio");
 
-	if( gpio_node != NULL )
-	{
-		pr_info("Found gpio node!!! \n");
-	}
 
 
 /*	struct device_node *root_node = NULL;
@@ -187,6 +190,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 
 		//char *propValue;
 		int size;
+		of_property_read_string()
 		const char *propValue = of_get_property(root_node, "compatible", &size);
 		if ( propValue == NULL)
 		{
@@ -205,9 +209,9 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	//set some default settings
 	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
 	clockPin = 5;
-	clockPinState = 0;
+	//clockPinState = 0;
 	dataPin = 6;
-	dataPinState = 0;
+	//dataPinState = 0;
 
 	speed_hz = 100000;	//100 kHz
 	period_us = 1000000/speed_hz;
@@ -226,6 +230,9 @@ static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
 {
 	pr_info("SWDGPIOBBD_release()\n");
 	SWDGPIOBBD_lock = 0;
+
+
+
 	return 0;
 }
 
@@ -234,16 +241,40 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	pr_info("Driver Read Function Called...!!!\n");
 	// e.g. copy_to_user(buf, kernel_buffer, mem_size);
 
-	//// simply reads the idcode register
-	//command: SWD_CMD_READ_IDCODE
-
-
-
-	uint32_t	kernel_buffer = 0x0;
-	uint32_t 	mem_size = 4;
+	uint32_t	kernel_buffer[2] = {0x0, };
+	uint32_t 	mem_size = 8;
 
 	//1. >= 50 cycles high:
+
+	uint32_t	data = 0;
+	uint8_t		ack = 0;
+
+	//use spinlock to not get interrupted during the transfer
+	static spinlock_t lock;
+	unsigned long flags;
+	spin_lock_init(&lock);
+
+	spin_lock_irqsave( &lock, flags);
+	//read_lock_irqsave()
+	//write_lock_irqsave()
+
 	SWDGPIOBBD_connectionSequence();
+	//SWDGPIOBBD_command( 0x79 );
+	//SWDGPIOBBD_command( 0xE7 );
+	SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );
+	SWDGPIOBBD_cycleTurnaround2Read();
+	SWDGPIOBBD_receiveAck( &ack );
+	SWDGPIOBBD_receiveData( &data );
+	SWDGPIOBBD_cycleTurnaround2Write();
+	//SWDGPIOBBD_send();
+
+	spin_unlock_irqrestore( &lock, flags);
+	//read_unlock_irqrestore()
+	//write_unlock_irqrestore()
+
+	kernel_buffer[0] = ack;
+	kernel_buffer[1] = data;
+
 
 	copy_to_user(buf, &kernel_buffer, mem_size);
 	return 0;
@@ -267,23 +298,116 @@ void SWDGPIOBBD_connectionSequence(void)
 	{
 		SWDGPIOBBD_cycleWrite( 1 );
 	}
+	SWDGPIOBBD_cycleWrite( 0 );
+	SWDGPIOBBD_cycleWrite( 0 );
 }
+
+void SWDGPIOBBD_command( uint8_t cmd )
+{
+	uint8_t mask = 0x80;
+
+	for (size_t i = 0; i < 8; i++)
+	{
+		SWDGPIOBBD_cycleWrite( mask & cmd );
+		mask >>= 1;
+	}
+}
+
+void SWDGPIOBBD_receiveAck( uint8_t *ack )
+{
+	uint8_t ackreply = 0;
+
+
+	for (int i = 2; i >= 0; i--)
+	{
+		ackreply |= (SWDGPIOBBD_cycleRead() << i);
+	}
+
+	*ack = ackreply;
+}
+
+void SWDGPIOBBD_receiveData( uint32_t *data )
+{
+	uint8_t	bitRead;
+	uint32_t datareply = 0;
+	uint32_t parityCount = 0;
+
+	for (int i = 31; i >= 0; i--)
+	{
+		bitRead = SWDGPIOBBD_cycleRead();
+		if( bitRead == 1 )
+		{
+			datareply |= ((uint32_t)SWDGPIOBBD_cycleRead() << i);
+			parityCount++;
+		}
+	}
+	*data = datareply;
+}
+
+
 
 uint8_t SWDGPIOBBD_cycleRead(void)
 {
-	return 0;
+	//set clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );
+	//read data pin
+	udelay(half_period_us);
+
+	//read pin
+	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
+
+	//unset clock pin
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+
+	return value;
 }
 
 void SWDGPIOBBD_cycleWrite( uint8_t bit )
 {
 	//set clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );
 	//set data pin
+	if( bit == 0 )
+		SWDPI_gpio_interface.unsetPin( dataPin );
+	else
+		SWDPI_gpio_interface.setPin( dataPin );
 	udelay(half_period_us);
+
 	//unset clock pin
+	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
 }
 
+void SWDGPIOBBD_cycleTurnaround2Read(void)
+{
+	//set clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
 
+	//unset data pin
+    SWDPI_gpio_interface.unsetPin( dataPin );
+	SWDPI_gpio_interface.setPinInput( dataPin );
+    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+
+	//unset clock pin
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+}
+
+void SWDGPIOBBD_cycleTurnaround2Write(void)
+{
+	//set clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
+
+	//unset data pin
+    SWDPI_gpio_interface.unsetPin( dataPin );
+	SWDPI_gpio_interface.setPinOutput( dataPin );
+    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_NONE );     //not sure what is correct here
+
+	//unset clock pin
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+}
 
 
 static int __init SWDGPIOBBD_init(void)
@@ -319,12 +443,13 @@ static int __init SWDGPIOBBD_init(void)
 			SWDPI_gpio_interface = (struct gpio_interface)
 			{
 				.init = initRaspi4,
-				.configPin = configPinRaspi4,
+				.configPinPull = configPinPullRaspi4,
 				.setPinOutput = setPinOutputRaspi4,
 				.setPinInput = setPinInputRaspi4,
 				.readPin = readPinRaspi4,
 				.setPin = setPinRaspi4,
-				.unsetPin = unsetPinRaspi4
+				.unsetPin = unsetPinRaspi4,
+				.cleanup = cleanupRaspi4
 			};
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2837" ) > 0 )

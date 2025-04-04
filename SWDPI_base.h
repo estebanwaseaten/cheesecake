@@ -12,7 +12,7 @@
 #include <linux/ioctl.h>
 
 // start(1), DP(0) or AP(1), read(1) or write(0), addr1, addr2, parity(1) if last 4 has odd # of 1, stop(0), park(not driven-0)
-#define SWD_CMD_READ_IDCODE 0xA4            // 0b10100100
+#define SWD_CMD_READ_IDCODE 0xA5            // 0b10100100
 
 
 #define SWD_IOC_MAGIC 's'
