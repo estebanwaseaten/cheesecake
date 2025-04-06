@@ -46,8 +46,8 @@ int initRaspi4( void )
     gpioMem = (uint32_t*)of_iomap( gpio_node, 0 );
     printk( "memory mapped %x", *gpioMem );
 
-    configPinPullRaspi4( 5, GPIO_PULL_NONE );       //what to do here?
-    configPinPullRaspi4( 6, GPIO_PULL_NONE );
+    configPinPullRaspi4( 5, GPIO_PULL_DOWN );       //what to do here?
+    configPinPullRaspi4( 6, GPIO_PULL_DOWN );
 
     setPinOutputRaspi4( 5 );
     setPinOutputRaspi4( 6 );

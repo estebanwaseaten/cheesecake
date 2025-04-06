@@ -34,8 +34,22 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
 
-void SWDGPIOBBD_connectionSequence(void);
-void SWDGPIOBBD_command( uint8_t cmd );
+static const uint8_t swd_sequence_jtag2swd[] =
+{
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0x9E, 0xE7,			//LSB
+	//0x79, 0xE7,		//MSB
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0x00
+};
+
+static const uint32_t swd_sequence_jtag2swd_length = 17; //17 bytes
+
+
+
+void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
+void SWDGPIOBBD_print_command( uint8_t cmd );
+void SWDGPIOBBD_command( uint8_t cmd );				//LSB!
 void SWDGPIOBBD_receiveData( uint32_t *data );
 void SWDGPIOBBD_receiveAck( uint8_t *ack );
 void SWDGPIOBBD_cycleTurnaround2Read(void);
@@ -258,9 +272,13 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	//read_lock_irqsave()
 	//write_lock_irqsave()
 
-	SWDGPIOBBD_connectionSequence();
-	//SWDGPIOBBD_command( 0x79 );
+	//SWDGPIOBBD_print_command( SWD_CMD_READ_IDCODE );
+
+	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
+	//SWDGPIOBBD_command( 0x79 );	// 0x9E
 	//SWDGPIOBBD_command( 0xE7 );
+	//SWDGPIOBBD_connectionSequence();	//if we were already in SWD state??
+	//SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );SWD_CMD_TARGETSEL
 	SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );
 	SWDGPIOBBD_cycleTurnaround2Read();
 	SWDGPIOBBD_receiveAck( &ack );
@@ -271,6 +289,10 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	spin_unlock_irqrestore( &lock, flags);
 	//read_unlock_irqrestore()
 	//write_unlock_irqrestore()
+
+	/* After completing a transaction, the host must either insert idle cycles or continue immediately with the start bit of
+	 * a new transaction. The host clocks the SWD interface with the line LOW to insert idle cycles.*/
+
 
 	kernel_buffer[0] = ack;
 	kernel_buffer[1] = data;
@@ -292,43 +314,54 @@ static long SWDGPIOBBD_ioctl( struct file *file, unsigned int cmd, unsigned long
 	return 0;
 }
 
-void SWDGPIOBBD_connectionSequence(void)
+void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength )
 {
-	for( size_t i = 0; i < 60; i++ )
+
+	for (int j = 0; j < seqLength; j++)
 	{
-		SWDGPIOBBD_cycleWrite( 1 );
+		uint8_t mask = 0x80;
+		for (int i = 0; i < 8; i++)
+		{
+			SWDGPIOBBD_cycleWrite( seq[j] & mask );
+			mask >>= 1;
+		}
 	}
-	SWDGPIOBBD_cycleWrite( 0 );
-	SWDGPIOBBD_cycleWrite( 0 );
 }
 
 void SWDGPIOBBD_command( uint8_t cmd )
 {
-	uint8_t mask = 0x80;
-
 	for (size_t i = 0; i < 8; i++)
 	{
-		SWDGPIOBBD_cycleWrite( mask & cmd );
-		mask >>= 1;
+		SWDGPIOBBD_cycleWrite( cmd & (1 << i));		//LSB first
 	}
+}
+
+void SWDGPIOBBD_print_command( uint8_t cmd )
+{
+	pr_info("command order on wire: ");
+	for (size_t i = 0; i < 8; i++)
+	{
+		pr_info("%d", (cmd & (1 << i)));
+	}
+	pr_info("\n");
 }
 
 void SWDGPIOBBD_receiveAck( uint8_t *ack )
 {
 	uint8_t ackreply = 0;
-
-
-	for (int i = 2; i >= 0; i--)
+	pr_info("ack order on wire: ");
+	for (int i = 0; i < 3; i++)		//on the wire: LSB first
 	{
 		ackreply |= (SWDGPIOBBD_cycleRead() << i);
+		pr_info("%d", (ackreply & (1 << i)));
 	}
-
+	pr_info("\n");
 	*ack = ackreply;
 }
 
 void SWDGPIOBBD_receiveData( uint32_t *data )
 {
-	uint8_t	bitRead;
+	uint32_t	bitRead;
 	uint32_t datareply = 0;
 	uint32_t parityCount = 0;
 
@@ -337,7 +370,7 @@ void SWDGPIOBBD_receiveData( uint32_t *data )
 		bitRead = SWDGPIOBBD_cycleRead();
 		if( bitRead == 1 )
 		{
-			datareply |= ((uint32_t)SWDGPIOBBD_cycleRead() << i);
+			datareply |= (bitRead << i);
 			parityCount++;
 		}
 	}
@@ -346,65 +379,81 @@ void SWDGPIOBBD_receiveData( uint32_t *data )
 
 
 
+
+//these should be correct:
+//https://developer.arm.com/documentation/dui0499/d/ARM-DSTREAM-Target-Interface-Connections/SWD-timing-requirements
 uint8_t SWDGPIOBBD_cycleRead(void)
 {
-	//set clock pin
+	//set data pin
+	//SWDPI_gpio_interface.unsetPin( dataPin );	//just in case - should be unset anyways
+	//unsset clock pin
 	SWDPI_gpio_interface.unsetPin( clockPin );
 	//read data pin
 	udelay(half_period_us);
 
-	//read pin
 	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
-
-	//unset clock pin
+	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
+	//udelay(1);	//to be safe???	now its too late
+	value += SWDPI_gpio_interface.readPin( dataPin );
+	//read pin
+
+
 	udelay(half_period_us);
 
-	return value;
+	return (value == 2);
 }
 
 void SWDGPIOBBD_cycleWrite( uint8_t bit )
 {
-	//set clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );
-	//set data pin
+	//1. set data pin
 	if( bit == 0 )
 		SWDPI_gpio_interface.unsetPin( dataPin );
 	else
 		SWDPI_gpio_interface.setPin( dataPin );
+
+	//1. unset clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );
+	//max delay here Tos = 5ns
+
 	udelay(half_period_us);
 
-	//unset clock pin
+	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
 }
 
 void SWDGPIOBBD_cycleTurnaround2Read(void)
 {
-	//set clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
 
-	//unset data pin
-    SWDPI_gpio_interface.unsetPin( dataPin );
-	SWDPI_gpio_interface.setPinInput( dataPin );
-    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
 
 	//unset clock pin
+	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
+	SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
+	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+	SWDPI_gpio_interface.setPinInput( dataPin );
+
+	//none---> reply is full height, DOWN---> reply is half.
+	udelay(half_period_us);
+	//unset data pin
+	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
+	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_NONE );
 }
 
 void SWDGPIOBBD_cycleTurnaround2Write(void)
 {
-	//set clock pin
+	//unset clock pin
 	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
 
 	//unset data pin
     SWDPI_gpio_interface.unsetPin( dataPin );
 	SWDPI_gpio_interface.setPinOutput( dataPin );
-    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_NONE );     //not sure what is correct here
+    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+	udelay(half_period_us);
 
-	//unset clock pin
+	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
 }
