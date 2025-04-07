@@ -484,6 +484,18 @@ static int __init SWDGPIOBBD_init(void)
 		if( of_machine_is_compatible( "brcm,bcm2712" ) > 0 )
 		{
 			pr_info("is bcm2712 \n");
+			initRaspi5();
+			SWDPI_gpio_interface = (struct gpio_interface)
+			{
+				.init = initRaspi5,
+				.configPinPull = configPinPullRaspi5,
+				.setPinOutput = setPinOutputRaspi5,
+				.setPinInput = setPinInputRaspi5,
+				.readPin = readPinRaspi5,
+				.setPin = setPinRaspi5,
+				.unsetPin = unsetPinRaspi5,
+				.cleanup = cleanupRaspi5
+			};
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2711" ) > 0 )
 		{
