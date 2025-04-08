@@ -33,6 +33,8 @@ MODULE_AUTHOR("dw42");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
+//in some examples the clock idles high --> try that
+
 
 static const uint8_t swd_sequence_jtag2swd[] =
 {
@@ -232,6 +234,8 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	half_period_us = period_us/2;
 
 
+	SWDPI_gpio_interface.setPin( clockPin );	//clock idles high!
+
 
 //    kmalloc(mem_size , GFP_KERNEL)	//other flags possible
 //    kfree()
@@ -273,6 +277,8 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	//write_lock_irqsave()
 
 	//SWDGPIOBBD_print_command( SWD_CMD_READ_IDCODE );
+
+
 
 	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
 	//SWDGPIOBBD_command( 0x79 );	// 0x9E
@@ -319,11 +325,10 @@ void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength )
 
 	for (int j = 0; j < seqLength; j++)
 	{
-		uint8_t mask = 0x80;
+		//uint8_t mask = 0x80;
 		for (int i = 0; i < 8; i++)
 		{
-			SWDGPIOBBD_cycleWrite( seq[j] & mask );
-			mask >>= 1;
+			SWDGPIOBBD_cycleWrite( seq[j] & (1 << i) );
 		}
 	}
 }

@@ -13,7 +13,14 @@
 
 // start(1), DP(0) or AP(1), read(1) or write(0), addr1, addr2, parity(1) if last 4 has odd # of 1, stop(0), park(1)
 #define SWD_CMD_READ_IDCODE 0xA5            // 0b10100101
+//response: [31-28] Version, [27-12] PARTNO (0xBA00 or 0xBA10), [11, 1] DESIGNER (ARM=01000111011), [0]=1
 //#define SWD_CMD_TARGETSEL   0x99
+
+//target response:
+//  line: 100 -> OK
+//  line: 010 -> WAIT
+//  line: 001 -> FAULT      ->could be a missing turnaround.
+//  line: 0b111 -> PROTOCOL error (parity or nothing connected(line pulled high))
 
 #define GPIO_PULL_NONE    0
 #define GPIO_PULL_UP      1

@@ -65,6 +65,7 @@
 #define GPIO_BCM2835_GPPUPPDN2   59
 #define GPIO_BCM2835_GPPUPPDN3   60
 
+
 int initRaspi4( void );
 int configPinPullRaspi4( uint8_t pin, uint32_t setting );
 int setPinOutputRaspi4( uint8_t pin );
