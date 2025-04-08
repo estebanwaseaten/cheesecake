@@ -13,10 +13,6 @@
 #define GPIO_ALT4    3
 #define GPIO_ALT5    2
 
-#define GPIO_PULL_NONE    0
-#define GPIO_PULL_UP      1
-#define GPIO_PULL_DOWN    2
-
 #define GPIO_RISING_EDGE_SYNC 0
 #define GPIO_FALLING_EDGE_SYNC 1
 #define GPIO_HIGH 2

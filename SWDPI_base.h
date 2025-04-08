@@ -15,6 +15,10 @@
 #define SWD_CMD_READ_IDCODE 0xA5            // 0b10100101
 //#define SWD_CMD_TARGETSEL   0x99
 
+#define GPIO_PULL_NONE    0
+#define GPIO_PULL_UP      1
+#define GPIO_PULL_DOWN    2
+
 
 #define SWD_IOC_MAGIC 's'
 

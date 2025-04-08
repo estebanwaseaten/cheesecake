@@ -3,6 +3,7 @@
 #include <linux/of_address.h>
 
 #include "SWDPI_raspi4.h"
+#include "SWDPI_base.h"
 
 volatile uint32_t    *gpioMem = NULL;
 
@@ -68,7 +69,7 @@ int cleanupRaspi4( void )
 
 
 //what do we need this for?
-int configPinPullRaspi4( uint8_t pin, uint32_t setting )
+int configPinPullRaspi4( uint8_t pin, uint32_t setting )        //what is setting
 {
     uint8_t GPFSELx = pin / 16;             //one register contains selects for 10 pins
     uint8_t posInReg = pin - (GPFSELx*16);  //position within register: 0 -> 3 LSBs
