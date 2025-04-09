@@ -16,7 +16,7 @@ int main( void )
 
     uint32_t myReadBuffer[2];
 
-    read(cake, &myReadBuffer, 8);   //read 4 bytes
+    read(cake, &myReadBuffer, 8);   //read 4 bytes -->> always reads IDCODE
 
     printf( "test read: 0x%x 0x%x \n", myReadBuffer[0], myReadBuffer[1] );
 

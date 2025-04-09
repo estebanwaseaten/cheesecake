@@ -12,7 +12,7 @@ int initRaspi4( void )
     pr_info("initRaspi4() \n");
 
     struct device_node *gpio_node = NULL;
-	gpio_node = of_find_node_by_name(NULL, "gpio");
+	gpio_node = of_find_node_by_name(NULL, "gpio");        //maybe better by path? 
 
 	if( gpio_node == NULL )
 	{

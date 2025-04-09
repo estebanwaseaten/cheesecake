@@ -6,13 +6,6 @@
 #include "SWDPI_base.h"
 
 
-#define OFFSET_GPIO_RP1 0x00
-#define OFFSET_PADS_RP1 0x8000     //0x20000 divide by four?
-
-#define RP1_RW_OFFSET	0x0000    //normal read/write
-#define RP1_XOR_OFFSET	0x400     //0x1000    // atomic XOR on write. read does not advance RF/RWF regs --> debugging FIFO
-#define RP1_SET_OFFSET	0x800     //0x2000    // atomic bitmask set on write
-#define RP1_CLR_OFFSET	0xC00     //0x3000    // atomic bitmask clear on write
 
 
 volatile uint32_t    *gpio5Mem = NULL;
@@ -51,15 +44,22 @@ int initRaspi5( void )
     printk( "gpio addr: %x size: %x \n", gpioaddr, gpiosize );
 
     gpio5Mem = (uint32_t*)of_iomap( gpio_node, 0 );  //maps whole node __>
-    printk( "gpio memory mapped %x \n", *gpio5Mem );
+    printk( "gpio memory mapped 0x%x \n", *gpio5Mem );
+
+    configPinPullRaspi5( 5, GPIO_PULL_NONE );       //always leave it at pull down??
+    configPinPullRaspi5( 6, GPIO_PULL_NONE );
+
+    setPinOutputRaspi5( 5 );
+    setPinOutputRaspi5( 6 );
+
+    unsetPinRaspi5( 5 );
+    unsetPinRaspi5( 6 );
 
     return 0;
 }
 
 int cleanupRaspi5( void )
 {
-
-
     return 0;
 }
 
@@ -89,30 +89,61 @@ int configPinPullRaspi5( uint8_t pin, uint32_t setting )
 
     return 0;
 }
+
 int setPinOutputRaspi5( uint8_t pin )
 {
+    //set in the pads region
+    uint8_t pinReg = pin*2 + 1;
+    uint8_t padReg = pin + 1;
 
+    //regWrite( pinReg + RP1_CLR_OFFSET, 0x3F01F );     //clear INOVER, OEOVER, OUTOVER and FUNCSEL
+    gpio5Mem[ pinReg + RP1_CLR_OFFSET] = 0x3F01F;     //clear INOVER, OEOVER, OUTOVER and FUNCSEL
+
+    gpio5Mem[OFFSET_PADS_RP1 + padReg + RP1_CLR_OFFSET] = (3 << 6);     //unsets output disable, input enable
+    gpio5Mem[ pinReg + RP1_SET_OFFSET ] = ((3 << 14) | 0x1F);           //select function NULL and enable output
 
     return 0;
 }
+
 int setPinInputRaspi5( uint8_t pin )
 {
+    //set in the pads region
+    uint8_t pinReg = pin*2 + 1;
+    uint8_t padReg = pin + 1;
+
+    //regWrite( pinReg + RP1_CLR_OFFSET, 0x3F01F );     //clear INOVER, OEOVER, OUTOVER and FUNCSEL
+    gpio5Mem[ pinReg + RP1_CLR_OFFSET] = 0x3F01F;     //clear INOVER, OEOVER, OUTOVER and FUNCSEL
+
+    gpio5Mem[OFFSET_PADS_RP1 + padReg + RP1_SET_OFFSET] = (3 << 6);     //unsets output disable, input enable
+    gpio5Mem[ pinReg + RP1_SET_OFFSET ] = 0x1F;           //select function NULL and enable output
 
     return 0;
 }
+
 int readPinRaspi5( uint8_t pin )
 {
+    uint32_t regValue = 0;
+    uint8_t pinReg = pin*2;
 
+    regValue = gpio5Mem[pinReg];
+    if( ( regValue & (1 << 23) ) > 0 )
+    {
+        return 1;
+    }
     return 0;
 }
 
 int setPinRaspi5( uint8_t pin )
 {
-
+    uint8_t pinReg = pin*2 + 1;
+    gpio5Mem[pinReg + RP1_SET_OFFSET] = (3 << 12);
     return 0;
 }
+
 int unsetPinRaspi5( uint8_t pin )
 {
-
+    uint8_t pinReg = pin*2 + 1;
+    gpio5Mem[pinReg + RP1_CLR_OFFSET] = (3 << 12);
+    gpio5Mem[pinReg + RP1_SET_OFFSET] = (2 << 12);
     return 0;
 }

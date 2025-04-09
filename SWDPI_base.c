@@ -33,7 +33,14 @@ MODULE_AUTHOR("dw42");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
-//in some examples the clock idles high --> try that
+
+
+//https://qcentlabs.com/posts/swd_banger/
+// clock idles high.
+// bit is read at the beginning of the low-high clock cycle (at the initial falling clock)
+// bit it written also at the beginning o fthe clock cycle, so that it has defined value at the rising clock in the middle of the cycle.
+// pins can always pull down or none... it does not seem to matter... leave at none for now...
+
 
 
 static const uint8_t swd_sequence_jtag2swd[] =
@@ -49,10 +56,12 @@ static const uint32_t swd_sequence_jtag2swd_length = 17; //17 bytes
 
 
 
+
+
 void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
 void SWDGPIOBBD_print_command( uint8_t cmd );
 void SWDGPIOBBD_command( uint8_t cmd );				//LSB!
-void SWDGPIOBBD_receiveData( uint32_t *data );
+int SWDGPIOBBD_receiveData( uint32_t *data );
 void SWDGPIOBBD_receiveAck( uint8_t *ack );
 void SWDGPIOBBD_cycleTurnaround2Read(void);
 void SWDGPIOBBD_cycleTurnaround2Write(void);
@@ -237,10 +246,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	SWDPI_gpio_interface.setPin( clockPin );	//clock idles high!
 
 
-//    kmalloc(mem_size , GFP_KERNEL)	//other flags possible
-//    kfree()
-//    copy_from_user()
-//    copy_to_user()
+
 	return 0;
 }
 
@@ -249,12 +255,10 @@ static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
 	pr_info("SWDGPIOBBD_release()\n");
 	SWDGPIOBBD_lock = 0;
 
-
-
 	return 0;
 }
 
-static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)
+static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
 {
 	pr_info("Driver Read Function Called...!!!\n");
 	// e.g. copy_to_user(buf, kernel_buffer, mem_size);
@@ -279,18 +283,20 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	//SWDGPIOBBD_print_command( SWD_CMD_READ_IDCODE );
 
 
-
+	//1. connection sequence
 	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
-	//SWDGPIOBBD_command( 0x79 );	// 0x9E
-	//SWDGPIOBBD_command( 0xE7 );
-	//SWDGPIOBBD_connectionSequence();	//if we were already in SWD state??
-	//SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );SWD_CMD_TARGETSEL
+
+	//2. get IDCODE
 	SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );
 	SWDGPIOBBD_cycleTurnaround2Read();
 	SWDGPIOBBD_receiveAck( &ack );
 	SWDGPIOBBD_receiveData( &data );
 	SWDGPIOBBD_cycleTurnaround2Write();
-	//SWDGPIOBBD_send();
+
+
+
+	SWDGPIOBBD_command( 0 );
+//	SWDGPIOBBD_command( 0 );
 
 	spin_unlock_irqrestore( &lock, flags);
 	//read_unlock_irqrestore()
@@ -354,23 +360,23 @@ void SWDGPIOBBD_print_command( uint8_t cmd )
 void SWDGPIOBBD_receiveAck( uint8_t *ack )
 {
 	uint8_t ackreply = 0;
-	pr_info("ack order on wire: ");
+	//pr_info("ack order on wire: ");
 	for (int i = 0; i < 3; i++)		//on the wire: LSB first
 	{
 		ackreply |= (SWDGPIOBBD_cycleRead() << i);
-		pr_info("%d", (ackreply & (1 << i)));
+		//pr_info("%d", (ackreply & (1 << i)));
 	}
-	pr_info("\n");
+	//pr_info("\n");
 	*ack = ackreply;
 }
 
-void SWDGPIOBBD_receiveData( uint32_t *data )
+int SWDGPIOBBD_receiveData( uint32_t *data )
 {
 	uint32_t	bitRead;
 	uint32_t datareply = 0;
 	uint32_t parityCount = 0;
 
-	for (int i = 31; i >= 0; i--)
+	for (int i = 0; i < 32; i++)
 	{
 		bitRead = SWDGPIOBBD_cycleRead();
 		if( bitRead == 1 )
@@ -379,10 +385,25 @@ void SWDGPIOBBD_receiveData( uint32_t *data )
 			parityCount++;
 		}
 	}
+	bitRead = SWDGPIOBBD_cycleRead();	//parity bit
+
 	*data = datareply;
+
+	//pr_info("parityCount: %d parityBit: %d", parityCount, bitRead );
+	if( !((parityCount & 1) ^ bitRead) ) //is odd and 1 or even and 0
+	{
+		//pr_info("parity matches!");
+		return 0;
+	}
+
+	return -1;	//parity mismatch
 }
 
 
+
+//// try a few things. 1. clock idles high, one clock cycle is off-on, change output on beginning of off-on cycle
+// 			--> when clock is transitioning to high, the target can read
+//			--> read at the bginning of the clock cycle (right after we transition low)
 
 
 //these should be correct:
@@ -393,20 +414,21 @@ uint8_t SWDGPIOBBD_cycleRead(void)
 	//SWDPI_gpio_interface.unsetPin( dataPin );	//just in case - should be unset anyways
 	//unsset clock pin
 	SWDPI_gpio_interface.unsetPin( clockPin );
+	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
+
 	//read data pin
 	udelay(half_period_us);
 
-	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
 	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
 	//udelay(1);	//to be safe???	now its too late
-	value += SWDPI_gpio_interface.readPin( dataPin );
+	//value += SWDPI_gpio_interface.readPin( dataPin );
 	//read pin
 
 
 	udelay(half_period_us);
 
-	return (value == 2);
+	return (value != 0);
 }
 
 void SWDGPIOBBD_cycleWrite( uint8_t bit )
@@ -435,7 +457,9 @@ void SWDGPIOBBD_cycleTurnaround2Read(void)
 	//unset clock pin
 	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
 	SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
-	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+
+//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );	//NONE
 	SWDPI_gpio_interface.setPinInput( dataPin );
 
 	//none---> reply is full height, DOWN---> reply is half.
@@ -444,7 +468,7 @@ void SWDGPIOBBD_cycleTurnaround2Read(void)
 	//set clock pin
 	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
-	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_NONE );
+
 }
 
 void SWDGPIOBBD_cycleTurnaround2Write(void)
@@ -455,7 +479,7 @@ void SWDGPIOBBD_cycleTurnaround2Write(void)
 	//unset data pin
     SWDPI_gpio_interface.unsetPin( dataPin );
 	SWDPI_gpio_interface.setPinOutput( dataPin );
-    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+//    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
 	udelay(half_period_us);
 
 	//set clock pin
