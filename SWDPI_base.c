@@ -22,40 +22,55 @@
 #include <linux/delay.h>
 #include <linux/spinlock.h>
 
-
+//#include <linux/flex_array.h>	//allocate non-continuous arrays...
+//0x1 0x2ba01477
 //#include <linux/gpio/driver.h>
 #include "SWDPI_raspi4.h"
 #include "SWDPI_raspi5.h"
-#include "SWDPI_base.h"	//public header
+#include "SWDPI_base.h"
+#include "SWDPI.h"	//public header
 
 MODULE_DESCRIPTION("SWD GPIO bitbang driver: SWDGPIOBBD");
 MODULE_AUTHOR("dw42");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
-
-
 //https://qcentlabs.com/posts/swd_banger/
 // clock idles high.
 // bit is read at the beginning of the low-high clock cycle (at the initial falling clock)
 // bit it written also at the beginning o fthe clock cycle, so that it has defined value at the rising clock in the middle of the cycle.
-// pins can always pull down or none... it does not seem to matter... leave at none for now...
+// pins can always pull down or none... it does not seem to matter... leave at none for now...\
+
+/* regarding timing - useful comments from chatGPT:
+To minimize interruptions and avoid long stall times in a kernel module on a Raspberry Pi, consider the following strategies:
+1. Real-Time Scheduling: Use real-time scheduling policies like SCHED_FIFO or SCHED_RR to give your kernel module higher priority over other processes. This can reduce the likelihood of being preempted by other tasks.
+2. Interrupt Handling: Ensure that your module efficiently handles interrupts. Use interrupt handlers to manage time-critical tasks and defer less critical work to bottom halves or work queues.
+3. Preemption and Latency: Enable kernel preemption and configure low-latency settings if they are available in your kernel configuration. This can help reduce the time your module is stalled by other kernel activities.
+4. Isolate CPUs: If your application allows, you can isolate one or more CPUs for your real-time tasks using CPU affinity. This can prevent other processes from running on those CPUs.
+5. Optimize Code: Ensure that your kernel module code is optimized for performance. Avoid long-running loops and minimize the use of blocking calls.
+6. Use High-Resolution Timers: If your kernel supports it, use high-resolution timers (hrtimer) for more precise timing control.
+*/
+
+// start a thread --> SCHED_FIFO
+
+/* struct task_struct *task;
+task = kthread_create(your_thread_function, data, "your_thread_name");
+if (!IS_ERR(task)) {
+    kthread_bind(task, 0); // Bind to CPU 0
+    wake_up_process(task);
+}
+*/
 
 
+// IDEA:
+// 1. writing commands with data ( 32bits cmd + 32bits data ) into cmd buffer (maybe already check for validity)
+// 2. upon read, all commands are processed and stored in a buffer. The buffer can be read (32bits status + 32 bits data) until empty. Empty buffer reads IDCODe.
+// cmd buffer is uint64_t[128] maybe?
+// write of 0x0 resets com and clears buffer
 
-static const uint8_t swd_sequence_jtag2swd[] =
-{
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	0x9E, 0xE7,			//LSB
-	//0x79, 0xE7,		//MSB
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	0x00
-};
-
-static const uint32_t swd_sequence_jtag2swd_length = 17; //17 bytes
-
-
-
+uint64_t buffer[128];   //could go both ways...
+uint32_t cmd_level = 0;
+uint32_t reply_level = 0;
 
 
 void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
@@ -116,18 +131,6 @@ static struct file_operations SWDGPIOBBD_fops =
 	.release        = SWDGPIOBBD_release,
 };
 
-struct gpio_interface
-{
-	int (*init) ( void );
-	int (*configPinPull) (uint8_t, uint32_t);
-	int (*setPinOutput) (uint8_t);
-	int (*setPinInput) (uint8_t);
-	int (*readPin) (uint8_t);
-	int (*setPin) (uint8_t);
-	int (*unsetPin) (uint8_t);
-	int (*cleanup) (void);
-};
-
 struct gpio_interface SWDPI_gpio_interface =
 {
 	.init = initRaspi4,
@@ -140,48 +143,7 @@ struct gpio_interface SWDPI_gpio_interface =
 	.cleanup = cleanupRaspi4
 };
 
-// PARAMETER PARAMETER PARAMETER
-//define what is happening in /sys/module/.../parameters
-//param to be set in sysfs
-int myTestParam = 0;
-int testParam_callback( const char *val, const struct kernel_param *kp );
-const struct kernel_param_ops my_param_ops =
-{
-        .set = &testParam_callback, // Use our setter ...
-        .get = &param_get_int, // .. and standard getter
-};
-//generates parameter in /sys/module/.../parameters/...
-module_param_cb(myTestParam, &my_param_ops, &myTestParam, S_IRUGO|S_IWUSR );		//whenever cb_valueETX is modified, the .set callback of my_param_ops is called
-int testParam_callback( const char *val, const struct kernel_param *kp )
-{
-	int res = param_set_int(val, kp);
-	if( res == 0 )
-	{
-			pr_info("callback called!");
-			return 0;
-	}
-	return -1;
-}
 
-
-
-// /proc/read - not sure if we need this...
-static ssize_t SWDGPIOBBD_ProcRead( struct file* file, char __user* user_buffer, size_t count, loff_t* offset )		// called via: cat /proc/cheesePI
-{
-	pr_info("Calling custom_read( struct file* file, char __user* user_buffer, size_t count, loff_t* offset ).");
-
-	char greeting[] = "Hello You!\n";
-	int  length_of_greeting = strlen( greeting );
-	if( *offset > 0 )
-	{
-		return 0;
-	}
-
-	copy_to_user( user_buffer, greeting, length_of_greeting );
-	*offset = length_of_greeting;
-
-	return length_of_greeting;
-}
 
 
 // /dev/... access functions
@@ -203,7 +165,9 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	//correct chip has been selected
 	SWDPI_gpio_interface.init();
 
-
+	uint64_t buffer[128];
+	cmd_level = 0;
+	reply_level = 0;
 
 
 
@@ -272,13 +236,13 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	uint8_t		ack = 0;
 
 	//use spinlock to not get interrupted during the transfer
-	static spinlock_t lock;
-	unsigned long flags;
-	spin_lock_init(&lock);
 
-	spin_lock_irqsave( &lock, flags);
-	//read_lock_irqsave()
-	//write_lock_irqsave()
+
+	//does not seem to be necessary:
+	//static spinlock_t lock;
+	//unsigned long flags;
+	//spin_lock_init(&lock);
+	//spin_lock_irqsave( &lock, flags);
 
 	//SWDGPIOBBD_print_command( SWD_CMD_READ_IDCODE );
 
@@ -294,21 +258,13 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	SWDGPIOBBD_cycleTurnaround2Write();
 
 
-
 	SWDGPIOBBD_command( 0 );
-//	SWDGPIOBBD_command( 0 );
 
-	spin_unlock_irqrestore( &lock, flags);
-	//read_unlock_irqrestore()
-	//write_unlock_irqrestore()
-
-	/* After completing a transaction, the host must either insert idle cycles or continue immediately with the start bit of
-	 * a new transaction. The host clocks the SWD interface with the line LOW to insert idle cycles.*/
-
+	//does not seem to be necessary:
+	//spin_unlock_irqrestore( &lock, flags);
 
 	kernel_buffer[0] = ack;
 	kernel_buffer[1] = data;
-
 
 	copy_to_user(buf, &kernel_buffer, mem_size);
 	return 0;
@@ -574,6 +530,53 @@ static void __exit SWDGPIOBBD_exit(void)
 		//dealloc minor&major numbers
 		unregister_chrdev_region( SWDGPIOBBD_dev_id, 1 );
 }
+
+
+// PARAMETER PARAMETER PARAMETER  --  we do not need this here I think
+//define what is happening in /sys/module/.../parameters
+//param to be set in sysfs
+/*int myTestParam = 0;
+int testParam_callback( const char *val, const struct kernel_param *kp );
+const struct kernel_param_ops my_param_ops =
+{
+        .set = &testParam_callback, // Use our setter ...
+        .get = &param_get_int, // .. and standard getter
+};
+//generates parameter in /sys/module/.../parameters/...
+module_param_cb(myTestParam, &my_param_ops, &myTestParam, S_IRUGO|S_IWUSR );		//whenever cb_valueETX is modified, the .set callback of my_param_ops is called
+int testParam_callback( const char *val, const struct kernel_param *kp )
+{
+	int res = param_set_int(val, kp);
+	if( res == 0 )
+	{
+			pr_info("callback called!");
+			return 0;
+	}
+	return -1;
+}*/
+
+
+
+// /proc/read - not sure if we need this...
+static ssize_t SWDGPIOBBD_ProcRead( struct file* file, char __user* user_buffer, size_t count, loff_t* offset )		// called via: cat /proc/cheesePI
+{
+	pr_info("Calling custom_read( struct file* file, char __user* user_buffer, size_t count, loff_t* offset ).");
+
+	char greeting[] = "Hello You!\n";
+	int  length_of_greeting = strlen( greeting );
+	if( *offset > 0 )
+	{
+		return 0;
+	}
+
+	//could return current status...
+
+	copy_to_user( user_buffer, greeting, length_of_greeting );
+	*offset = length_of_greeting;
+
+	return length_of_greeting;
+}
+
 
 module_init( SWDGPIOBBD_init );
 module_exit( SWDGPIOBBD_exit );

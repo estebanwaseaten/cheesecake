@@ -3,6 +3,9 @@
 #include <fcntl.h>      // O_RDWR | O_SYNC etc
 #include <unistd.h>     //close()
 
+#include "SWDPI_base.h"
+
+
 
 int main( void )
 {
@@ -12,6 +15,12 @@ int main( void )
     {
         printf( "failed to connect to driver!\n" );
     }
+
+    //idea:
+    // 1. write 32 bit cmd + 32 bit data (or 0x0 for reads) into the file repeatedly
+    // 2. read same amount of lines --> a) triggers communication and b) returns ack + data/0x0
+
+
 
 
     uint32_t myReadBuffer[2];
