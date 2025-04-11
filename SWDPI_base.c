@@ -68,7 +68,8 @@ if (!IS_ERR(task)) {
 // cmd buffer is uint64_t[128] maybe?
 // write of 0x0 resets com and clears buffer
 
-uint64_t buffer[128];   //could go both ways...
+uint64_t *buffer;   //could go both ways...		//kzalloc(<size>, GFP_KERNEL);	kcalloc(buffer_size, sizeof(uint64_t), GFP_KERNEL)
+uint32_t buffer_size = 128;
 uint32_t cmd_level = 0;
 uint32_t reply_level = 0;
 
@@ -144,8 +145,6 @@ struct gpio_interface SWDPI_gpio_interface =
 };
 
 
-
-
 // /dev/... access functions
 static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 {
@@ -162,38 +161,20 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		return -1;
 	}
 
-	//correct chip has been selected
+	//correct hardware has been selected already, when kernel module was loaded
 	SWDPI_gpio_interface.init();
 
-	uint64_t buffer[128];
+	buffer = (uint64_t*)kcalloc(buffer_size, sizeof(uint64_t), GFP_KERNEL);
+	if ( buffer == NULL )
+	{
+		/* abort */
+		pr_info("SWDGPIOBBD_open() failure: kcalloc() failed \n");
+		SWDPI_gpio_interface.cleanup();
+		SWDGPIOBBD_lock = 0;
+		return -1;
+	}
 	cmd_level = 0;
 	reply_level = 0;
-
-
-
-/*	struct device_node *root_node = NULL;
-	root_node = of_find_all_nodes(NULL);
-	if( root_node != NULL )
-	{
-		pr_info("Found root node!!! \n");
-
-		//char *propValue;
-		int size;
-		of_property_read_string()
-		const char *propValue = of_get_property(root_node, "compatible", &size);
-		if ( propValue == NULL)
-		{
-			pr_info("could not find property\n");
-			return -1;
-		}
-		/*else
-		{
-			for (size_t i = 0; i < size; i++)
-			{
-				printk( "%c", *(char*)(propValue + i));
-			}
-		}
-	}*/
 
 	//set some default settings
 	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
@@ -206,20 +187,27 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	period_us = 1000000/speed_hz;
 	half_period_us = period_us/2;
 
-
 	SWDPI_gpio_interface.setPin( clockPin );	//clock idles high!
-
-
-
 	return 0;
 }
 
-static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
+//need to write exactly 64bits
+static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t * off)
 {
-	pr_info("SWDGPIOBBD_release()\n");
-	SWDGPIOBBD_lock = 0;
+	pr_info("Driver Write Function Called...!!!\n");
+	// e.g. copy_from_user(kernel_buffer, buf, len);
 
-	return 0;
+	if ( (len % 8) != 0 ) // only accept full command or list of full commands
+	{
+		pr_info("write fail - wrong size \n");
+		return -1;
+	}
+
+	copy_from_user();
+
+
+
+	return len;
 }
 
 static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
@@ -270,13 +258,21 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	return 0;
 }
 
-static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t * off)
+static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
 {
-	pr_info("Driver Write Function Called...!!!\n");
-	// e.g. copy_from_user(kernel_buffer, buf, len);
-	return len;
+	pr_info("SWDGPIOBBD_release()\n");
+	SWDGPIOBBD_lock = 0;
+	SWDPI_gpio_interface.cleanup();
+	if( buffer != NULL )
+	{
+		kfree( buffer );
+	}
+
+	return 0;
 }
 
+
+//maybe not needed for now....
 static long SWDGPIOBBD_ioctl( struct file *file, unsigned int cmd, unsigned long arg )
 {
 	return 0;
