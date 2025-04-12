@@ -3,7 +3,8 @@
 #include <linux/of_address.h>
 
 #include "SWDPI_raspi5.h"
-#include "SWDPI_base.h"
+#include "SWDPI_SWD.h"
+//#include "SWDPI_base.h"
 
 
 
@@ -36,6 +37,19 @@ int initRaspi5( void )
         printk( "%c", *(char*)(propValue + i));
     }//*/
 
+    //set some default settings
+    //need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
+    clockPin = 5;
+    //clockPinState = 0;
+    dataPin = 6;
+    //dataPinState = 0;
+
+    speed_hz = 100000;	//100 kHz
+    period_us = 1000000/speed_hz;
+    half_period_us = period_us/2;
+
+
+
     //maybe backup registers... at some point
 
     uint64_t gpioaddr = 0;
@@ -46,20 +60,22 @@ int initRaspi5( void )
     gpio5Mem = (uint32_t*)of_iomap( gpio_node, 0 );  //maps whole node __>
     printk( "gpio memory mapped 0x%x \n", *gpio5Mem );
 
-    configPinPullRaspi5( 5, GPIO_PULL_NONE );       //always leave it at pull down??
-    configPinPullRaspi5( 6, GPIO_PULL_NONE );
+    configPinPullRaspi5( clockPin, GPIO_PULL_NONE );       //always leave it at pull down??
+    configPinPullRaspi5( dataPin, GPIO_PULL_NONE );
 
-    setPinOutputRaspi5( 5 );
-    setPinOutputRaspi5( 6 );
+    setPinOutputRaspi5( clockPin );
+    setPinOutputRaspi5( dataPin );
 
-    unsetPinRaspi5( 5 );
-    unsetPinRaspi5( 6 );
+    setPinRaspi5( clockPin );   //clock idles high
+    unsetPinRaspi5( dataPin );
 
     return 0;
 }
 
 int cleanupRaspi5( void )
 {
+    unsetPinRaspi5( clockPin );
+    unsetPinRaspi5( dataPin );
     return 0;
 }
 

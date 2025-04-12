@@ -19,15 +19,13 @@
 
 #include <linux/of.h>	//device tree access
 
-#include <linux/delay.h>
 #include <linux/spinlock.h>
 
 //#include <linux/flex_array.h>	//allocate non-continuous arrays...
 //0x1 0x2ba01477
 //#include <linux/gpio/driver.h>
-#include "SWDPI_raspi4.h"
-#include "SWDPI_raspi5.h"
 #include "SWDPI_base.h"
+#include "SWDPI_SWD.h"
 #include "SWDPI.h"	//public header
 
 MODULE_DESCRIPTION("SWD GPIO bitbang driver: SWDGPIOBBD");
@@ -68,21 +66,18 @@ if (!IS_ERR(task)) {
 // cmd buffer is uint64_t[128] maybe?
 // write of 0x0 resets com and clears buffer
 
-uint64_t *buffer;   //could go both ways...		//kzalloc(<size>, GFP_KERNEL);	kcalloc(buffer_size, sizeof(uint64_t), GFP_KERNEL)
-uint32_t buffer_size = 128;
-uint32_t cmd_level = 0;
-uint32_t reply_level = 0;
+uint8_t SWDGPIOBBD_lock;
 
+uint8_t SWDGPIOBBD_readwritelock;
 
-void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
-void SWDGPIOBBD_print_command( uint8_t cmd );
-void SWDGPIOBBD_command( uint8_t cmd );				//LSB!
-int SWDGPIOBBD_receiveData( uint32_t *data );
-void SWDGPIOBBD_receiveAck( uint8_t *ack );
-void SWDGPIOBBD_cycleTurnaround2Read(void);
-void SWDGPIOBBD_cycleTurnaround2Write(void);
-uint8_t SWDGPIOBBD_cycleRead(void);
-void SWDGPIOBBD_cycleWrite( uint8_t bit );
+uint64_t *sendBuffer;
+uint32_t sendBuffer_size = 64;
+uint64_t *receiveBuffer;
+uint32_t receiveBuffer_size = 64;
+
+uint32_t sendBuffer_level = 0;
+uint32_t receiveBuffer_Level = 0;
+
 
 //device ID (major/minor)
 dev_t SWDGPIOBBD_dev_id = 0;
@@ -91,16 +86,8 @@ static struct class *SWDGPIOBBD_dev_class;
 //character device in /dev:
 static struct cdev SWDGPIOBBD_cdev;
 
-uint8_t SWDGPIOBBD_lock;
 
-uint8_t	clockPin;
-//uint8_t clockPinState;
-uint8_t dataPin;
-//uint8_t dataPinState;
 
-uint32_t period_us;
-uint32_t half_period_us;
-uint32_t speed_hz;
 
 // PROCESS PROCESS PROCESS
 // define what is in /proc/...
@@ -132,18 +119,6 @@ static struct file_operations SWDGPIOBBD_fops =
 	.release        = SWDGPIOBBD_release,
 };
 
-struct gpio_interface SWDPI_gpio_interface =
-{
-	.init = initRaspi4,
-	.configPinPull = configPinPullRaspi4,
-	.setPinOutput = setPinOutputRaspi4,
-	.setPinInput = setPinInputRaspi4,
-	.readPin = readPinRaspi4,
-	.setPin = setPinRaspi4,
-	.unsetPin = unsetPinRaspi4,
-	.cleanup = cleanupRaspi4
-};
-
 
 // /dev/... access functions
 static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
@@ -157,37 +132,37 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	}
 	else
 	{
-		pr_info("SWDGPIOBBD_open() failure: already locked \n");
+		pr_warn("SWDGPIOBBD_open() failure: already locked \n");
 		return -1;
 	}
 
 	//correct hardware has been selected already, when kernel module was loaded
 	SWDPI_gpio_interface.init();
 
-	buffer = (uint64_t*)kcalloc(buffer_size, sizeof(uint64_t), GFP_KERNEL);
-	if ( buffer == NULL )
+	sendBuffer = (uint64_t*)kcalloc(sendBuffer_size, sizeof(uint64_t), GFP_KERNEL);
+	receiveBuffer = (uint64_t*)kcalloc(receiveBuffer_size, sizeof(uint64_t), GFP_KERNEL);
+	if( sendBuffer == NULL || receiveBuffer == NULL )
 	{
 		/* abort */
-		pr_info("SWDGPIOBBD_open() failure: kcalloc() failed \n");
+		pr_warn("SWDGPIOBBD_open() failure: kcalloc() failed \n");
 		SWDPI_gpio_interface.cleanup();
 		SWDGPIOBBD_lock = 0;
+		if( sendBuffer != NULL )
+		{
+			kfree( sendBuffer );
+		}
+		if( receiveBuffer != NULL )
+		{
+			kfree( receiveBuffer );
+		}
 		return -1;
 	}
-	cmd_level = 0;
-	reply_level = 0;
 
-	//set some default settings
-	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
-	clockPin = 5;
-	//clockPinState = 0;
-	dataPin = 6;
-	//dataPinState = 0;
+	sendBuffer_level = 0;
+	receiveBuffer_Level = 0;
+	SWDGPIOBBD_readwritelock = 0;
 
-	speed_hz = 100000;	//100 kHz
-	period_us = 1000000/speed_hz;
-	half_period_us = period_us/2;
 
-	SWDPI_gpio_interface.setPin( clockPin );	//clock idles high!
 	return 0;
 }
 
@@ -195,25 +170,99 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t * off)
 {
 	pr_info("Driver Write Function Called...!!!\n");
-	// e.g. copy_from_user(kernel_buffer, buf, len);
 
-	if ( (len % 8) != 0 ) // only accept full command or list of full commands
+	if( SWDGPIOBBD_readwritelock == 1 )
 	{
-		pr_info("write fail - wrong size \n");
+		pr_warn("write fail - currently in read action \n");
 		return -1;
 	}
 
-	copy_from_user( *to, *from, n);
+	if( (len % 8) != 0 ) // only accept full command or list of full commands
+	{
+		pr_warn("write fail - wrong size \n");
+		return SWDPI_ERR_WRONG_RW_SIZE;
+	}
+
+	if( receiveBuffer_Level != 0 )//still need to receive something first (NEED ERROR CODES)
+	{
+		pr_warn("write fail - receive buffer not empty \n");
+		return SWDPI_ERR_RECBUF_NOTEMPTY;
+	}
 
 
+	//1. copy to temp buffer
+	//2. check command
+	//3. add to main buffer
+	//4. execute... only reply buffer is empty, we receive new commands...
+	int count = len / 8;
+	uint64_t tempBuffer = 0;
+	uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
 
-	return len;
+	if( (count + sendBuffer_level) >= sendBuffer_size )
+	{
+		pr_warn("write fail - buffer full \n");
+		return -1;
+	}
+
+
+	for (size_t i = 0; i < count; i++)
+	{
+		//tempBuffer = *((uint64_t*)buf);
+		copy_from_user(&tempBuffer, buf, len);
+
+		/* at least check if Parity is correct?
+		if( checkCmd( tempBuffer ) < 0 )
+		{
+			empty tempBuffer!
+			pr_warn("write fail - command pre-check fault \n");
+			return -1;
+		}
+		*/
+		//add to buffer:
+		pr_info("add to send buffer: 0x%x - 0x%x\n", tempBuffer32[0], tempBuffer32[1]);
+		sendBuffer[sendBuffer_level] = tempBuffer;
+		sendBuffer_level++;
+	}
+
+
+	//start sending:
+	for (size_t i = 0; i < count; i++) {
+		/* code */
+	}
+
+	return 0;
 }
 
 static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
 {
 	pr_info("Driver Read Function Called...!!!\n");
 	// e.g. copy_to_user(buf, kernel_buffer, mem_size);
+
+	SWDGPIOBBD_readwritelock = 1;
+
+	if ( (len % 8) != 0 ) // only accept full command or list of full commands
+	{
+		pr_warn("read fail - wrong size \n");
+		return SWDPI_ERR_WRONG_RW_SIZE;
+	}
+
+	//now process the full!!! read buffer...
+	//receiveBuffer needs to be FIFO?
+
+	//if receiveBuffer is empty --> run new transfer
+	//else if receiverBuffer has sth --> return that first --> receiveBuffer needs to be empty before transfer
+	if( receiveBuffer_Level == 0 )
+	{
+		//transfer & readout (first)
+
+	}
+	else
+	{
+		//readout
+
+	}
+
+
 
 	uint32_t	kernel_buffer[2] = {0x0, };
 	uint32_t 	mem_size = 8;
@@ -255,6 +304,8 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	kernel_buffer[1] = data;
 
 	copy_to_user(buf, &kernel_buffer, mem_size);
+
+	SWDGPIOBBD_readwritelock = 0;
 	return 0;
 }
 
@@ -263,9 +314,14 @@ static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
 	pr_info("SWDGPIOBBD_release()\n");
 	SWDGPIOBBD_lock = 0;
 	SWDPI_gpio_interface.cleanup();
-	if( buffer != NULL )
+
+	if( sendBuffer != NULL )
 	{
-		kfree( buffer );
+		kfree( sendBuffer );
+	}
+	if( receiveBuffer != NULL )
+	{
+		kfree( receiveBuffer );
 	}
 
 	return 0;
@@ -278,166 +334,7 @@ static long SWDGPIOBBD_ioctl( struct file *file, unsigned int cmd, unsigned long
 	return 0;
 }
 
-void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength )
-{
 
-	for (int j = 0; j < seqLength; j++)
-	{
-		//uint8_t mask = 0x80;
-		for (int i = 0; i < 8; i++)
-		{
-			SWDGPIOBBD_cycleWrite( seq[j] & (1 << i) );
-		}
-	}
-}
-
-void SWDGPIOBBD_command( uint8_t cmd )
-{
-	for (size_t i = 0; i < 8; i++)
-	{
-		SWDGPIOBBD_cycleWrite( cmd & (1 << i));		//LSB first
-	}
-}
-
-void SWDGPIOBBD_print_command( uint8_t cmd )
-{
-	pr_info("command order on wire: ");
-	for (size_t i = 0; i < 8; i++)
-	{
-		pr_info("%d", (cmd & (1 << i)));
-	}
-	pr_info("\n");
-}
-
-void SWDGPIOBBD_receiveAck( uint8_t *ack )
-{
-	uint8_t ackreply = 0;
-	//pr_info("ack order on wire: ");
-	for (int i = 0; i < 3; i++)		//on the wire: LSB first
-	{
-		ackreply |= (SWDGPIOBBD_cycleRead() << i);
-		//pr_info("%d", (ackreply & (1 << i)));
-	}
-	//pr_info("\n");
-	*ack = ackreply;
-}
-
-int SWDGPIOBBD_receiveData( uint32_t *data )
-{
-	uint32_t	bitRead;
-	uint32_t datareply = 0;
-	uint32_t parityCount = 0;
-
-	for (int i = 0; i < 32; i++)
-	{
-		bitRead = SWDGPIOBBD_cycleRead();
-		if( bitRead == 1 )
-		{
-			datareply |= (bitRead << i);
-			parityCount++;
-		}
-	}
-	bitRead = SWDGPIOBBD_cycleRead();	//parity bit
-
-	*data = datareply;
-
-	//pr_info("parityCount: %d parityBit: %d", parityCount, bitRead );
-	if( !((parityCount & 1) ^ bitRead) ) //is odd and 1 or even and 0
-	{
-		//pr_info("parity matches!");
-		return 0;
-	}
-
-	return -1;	//parity mismatch
-}
-
-
-
-//// try a few things. 1. clock idles high, one clock cycle is off-on, change output on beginning of off-on cycle
-// 			--> when clock is transitioning to high, the target can read
-//			--> read at the bginning of the clock cycle (right after we transition low)
-
-
-//these should be correct:
-//https://developer.arm.com/documentation/dui0499/d/ARM-DSTREAM-Target-Interface-Connections/SWD-timing-requirements
-uint8_t SWDGPIOBBD_cycleRead(void)
-{
-	//set data pin
-	//SWDPI_gpio_interface.unsetPin( dataPin );	//just in case - should be unset anyways
-	//unsset clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );
-	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
-
-	//read data pin
-	udelay(half_period_us);
-
-	//set clock pin
-	SWDPI_gpio_interface.setPin( clockPin );
-	//udelay(1);	//to be safe???	now its too late
-	//value += SWDPI_gpio_interface.readPin( dataPin );
-	//read pin
-
-
-	udelay(half_period_us);
-
-	return (value != 0);
-}
-
-void SWDGPIOBBD_cycleWrite( uint8_t bit )
-{
-	//1. set data pin
-	if( bit == 0 )
-		SWDPI_gpio_interface.unsetPin( dataPin );
-	else
-		SWDPI_gpio_interface.setPin( dataPin );
-
-	//1. unset clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );
-	//max delay here Tos = 5ns
-
-	udelay(half_period_us);
-
-	//set clock pin
-	SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
-}
-
-void SWDGPIOBBD_cycleTurnaround2Read(void)
-{
-
-
-	//unset clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
-	SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
-//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
-
-//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );	//NONE
-	SWDPI_gpio_interface.setPinInput( dataPin );
-
-	//none---> reply is full height, DOWN---> reply is half.
-	udelay(half_period_us);
-	//unset data pin
-	//set clock pin
-	SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
-
-}
-
-void SWDGPIOBBD_cycleTurnaround2Write(void)
-{
-	//unset clock pin
-	SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
-
-	//unset data pin
-    SWDPI_gpio_interface.unsetPin( dataPin );
-	SWDPI_gpio_interface.setPinOutput( dataPin );
-//    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
-	udelay(half_period_us);
-
-	//set clock pin
-	SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
-}
 
 
 static int __init SWDGPIOBBD_init(void)
@@ -459,59 +356,36 @@ static int __init SWDGPIOBBD_init(void)
 		//create device in /dev
 		device_create( SWDGPIOBBD_dev_class, NULL, SWDGPIOBBD_dev_id, NULL, "SWDPI" );
 
-
-
+		int result = 0;
 		//access correct function for each platform:
 		if( of_machine_is_compatible( "brcm,bcm2712" ) > 0 )
 		{
 			pr_info("is bcm2712 \n");
-			initRaspi5();
-			SWDPI_gpio_interface = (struct gpio_interface)
-			{
-				.init = initRaspi5,
-				.configPinPull = configPinPullRaspi5,
-				.setPinOutput = setPinOutputRaspi5,
-				.setPinInput = setPinInputRaspi5,
-				.readPin = readPinRaspi5,
-				.setPin = setPinRaspi5,
-				.unsetPin = unsetPinRaspi5,
-				.cleanup = cleanupRaspi5
-			};
+			result = SWDGPIOBBD_initRaspi( 5 );
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2711" ) > 0 )
 		{
 			pr_info("is bcm2711 \n");
-			initRaspi4();
-			SWDPI_gpio_interface = (struct gpio_interface)
-			{
-				.init = initRaspi4,
-				.configPinPull = configPinPullRaspi4,
-				.setPinOutput = setPinOutputRaspi4,
-				.setPinInput = setPinInputRaspi4,
-				.readPin = readPinRaspi4,
-				.setPin = setPinRaspi4,
-				.unsetPin = unsetPinRaspi4,
-				.cleanup = cleanupRaspi4
-			};
+			result = SWDGPIOBBD_initRaspi( 4 );
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2837" ) > 0 )
 		{
 			pr_info("is bcm2837 \n");
+			result = SWDGPIOBBD_initRaspi( 3 );
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2836" ) > 0 )
 		{
 			pr_info("is bcm2836 \n");
+			result = SWDGPIOBBD_initRaspi( 2 );
 		}
 		else if( of_machine_is_compatible( "brcm,bcm2835" ) > 0 )
 		{
 			pr_info("is bcm2835 \n");
+			result = SWDGPIOBBD_initRaspi( 1 );
 		}
-
-
-
-
 		return 0;
 }
+
 static void __exit SWDGPIOBBD_exit(void)
 {
 		pr_info( "Uninstalled SWDGPIOBBD :(\n" );

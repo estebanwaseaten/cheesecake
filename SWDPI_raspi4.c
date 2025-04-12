@@ -3,7 +3,8 @@
 #include <linux/of_address.h>
 
 #include "SWDPI_raspi4.h"
-#include "SWDPI_base.h"
+#include "SWDPI_SWD.h"
+//#include "SWDPI_base.h"
 
 volatile uint32_t    *gpioMem = NULL;
 
@@ -12,7 +13,7 @@ int initRaspi4( void )
     pr_info("initRaspi4() \n");
 
     struct device_node *gpio_node = NULL;
-	gpio_node = of_find_node_by_name(NULL, "gpio");        //maybe better by path? 
+	gpio_node = of_find_node_by_name(NULL, "gpio");        //maybe better by path?
 
 	if( gpio_node == NULL )
 	{
@@ -31,38 +32,47 @@ int initRaspi4( void )
     {
         printk( "%x", *(char*)(propValue + i));
     }*/
+    //set some default settings
+	//need 2 default pins (gpio5 and gpio6) for clock and reserve some memory for transfers?
+	clockPin = 5;
+	//clockPinState = 0;
+	dataPin = 6;
+	//dataPinState = 0;
+
+	speed_hz = 100000;	//100 kHz
+	period_us = 1000000/speed_hz;
+	half_period_us = period_us/2;
+
+    if ( SWDPI_gpio_interface.setPin == NULL )
+    {
+            pr_info("initRaspi4() setPin is NULL \n");
+            return -1;
+    }
 
     uint64_t gpioaddr = 0;
     uint64_t gpiosize = 0;
     of_property_read_reg(gpio_node, 0, &gpioaddr, &gpiosize);
     printk( "addr: %x size: %x", gpioaddr, gpiosize );
-    //of_get_parent(const struct device_node *node)
-    //of_property_count_u8_elems(const struct device_node *np, const char *propname)
-    //of_property_read_string_array
-    //of_property_count_u8_elems
-    //of_property_read_u8_array
-    //of_property_count_elems_of_sizes
-    //of_property_read_string
 
     gpioMem = (uint32_t*)of_iomap( gpio_node, 0 );
     printk( "memory mapped %x", *gpioMem );
 
-    configPinPullRaspi4( 5, GPIO_PULL_DOWN );       //what to do here?
-    configPinPullRaspi4( 6, GPIO_PULL_DOWN );
+    configPinPullRaspi4( clockPin, GPIO_PULL_DOWN );       //what to do here?
+    configPinPullRaspi4( dataPin, GPIO_PULL_DOWN );
 
-    setPinOutputRaspi4( 5 );
-    setPinOutputRaspi4( 6 );
+    setPinOutputRaspi4( clockPin );
+    setPinOutputRaspi4( dataPin );
 
-    unsetPinRaspi4( 5 );
-    unsetPinRaspi4( 6 );
+    setPinRaspi4( clockPin );
+    unsetPinRaspi4( dataPin );
 
     return 0;
 }
 
 int cleanupRaspi4( void )
 {
-    unsetPinRaspi4( 5 );
-    unsetPinRaspi4( 6 );
+    unsetPinRaspi4( clockPin );
+    unsetPinRaspi4( dataPin );
 
     return 0;
 }
