@@ -191,7 +191,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-//need to write exactly 64bits
+//need to write exactly 64bits or multiples...
 static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t * off)
 {
 	pr_info("Driver Write Function Called...!!!\n");
@@ -203,7 +203,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		return -1;
 	}
 
-	copy_from_user();
+	copy_from_user( *to, *from, n);
 
 
 
