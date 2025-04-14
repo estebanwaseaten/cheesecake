@@ -208,7 +208,6 @@ uint8_t SWDGPIOBBD_cycleRead(void)
    //value += SWDPI_gpio_interface.readPin( dataPin );
    //read pin
 
-
    udelay(half_period_us);
 
    return (value != 0);

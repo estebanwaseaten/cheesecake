@@ -7,8 +7,6 @@
 //#include "SWDPI_base.h"
 
 
-
-
 volatile uint32_t    *gpio5Mem = NULL;
 //volatile uint32_t    *pads5Mem = NULL;
 

@@ -1,6 +1,6 @@
 file(REMOVE_RECURSE
-  "/home/wegkamp/development/cheesecake/cheesetest"
-  "/home/wegkamp/development/cheesecake/cheesetest.pdb"
+  "/home/daniel/projects/cheesecake/cheesetest"
+  "/home/daniel/projects/cheesecake/cheesetest.pdb"
   "CMakeFiles/cheesetest.dir/cheesetest.c.o"
   "CMakeFiles/cheesetest.dir/cheesetest.c.o.d"
 )

@@ -6,7 +6,7 @@
 #include "SWDPI_SWD.h"
 //#include "SWDPI_base.h"
 
-volatile uint32_t    *gpioMem = NULL;
+volatile uint32_t    *gpio4Mem = NULL;
 
 int initRaspi4( void )
 {
@@ -43,22 +43,16 @@ int initRaspi4( void )
 	period_us = 1000000/speed_hz;
 	half_period_us = period_us/2;
 
-    if ( SWDPI_gpio_interface.setPin == NULL )
-    {
-            pr_info("initRaspi4() setPin is NULL \n");
-            return -1;
-    }
-
     uint64_t gpioaddr = 0;
     uint64_t gpiosize = 0;
     of_property_read_reg(gpio_node, 0, &gpioaddr, &gpiosize);
-    printk( "addr: %x size: %x", gpioaddr, gpiosize );
+    printk( "gpio:reg addr: %x size: %x", gpioaddr, gpiosize );
 
-    gpioMem = (uint32_t*)of_iomap( gpio_node, 0 );
-    printk( "memory mapped %x", *gpioMem );
+    gpio4Mem = (uint32_t*)of_iomap( gpio_node, 0 );
+    printk( "memory mapped %x", *gpio4Mem );
 
-    configPinPullRaspi4( clockPin, GPIO_PULL_DOWN );       //what to do here?
-    configPinPullRaspi4( dataPin, GPIO_PULL_DOWN );
+    configPinPullRaspi4( clockPin, GPIO_PULL_NONE );       //what to do here?
+    configPinPullRaspi4( dataPin, GPIO_PULL_NONE );
 
     setPinOutputRaspi4( clockPin );
     setPinOutputRaspi4( dataPin );
@@ -73,7 +67,6 @@ int cleanupRaspi4( void )
 {
     unsetPinRaspi4( clockPin );
     unsetPinRaspi4( dataPin );
-
     return 0;
 }
 
@@ -91,8 +84,8 @@ int configPinPullRaspi4( uint8_t pin, uint32_t setting )        //what is settin
 
     GPFSELx += 57; //offset to pull regs
 
-    uint32_t newRegValue = (gpioMem[GPFSELx] & ~registerMask) | (setting & registerMask);
-    gpioMem[GPFSELx] = newRegValue;
+    uint32_t newRegValue = (gpio4Mem[GPFSELx] & ~registerMask) | (setting & registerMask);
+    gpio4Mem[GPFSELx] = newRegValue;
 
     return 0;
 }
@@ -104,8 +97,8 @@ int setPinOutputRaspi4( uint8_t pin )
     uint32_t registerMask = 0x7 << posInReg*3;
     uint32_t function = GPIO_OUTPUT << posInReg*3;
 
-    uint32_t newRegValue = (gpioMem[GPFSELx] & ~registerMask) | (function & registerMask);
-    gpioMem[GPFSELx] = newRegValue;
+    uint32_t newRegValue = (gpio4Mem[GPFSELx] & ~registerMask) | (function & registerMask);
+    gpio4Mem[GPFSELx] = newRegValue;
 
     return 0;
 }
@@ -117,8 +110,8 @@ int setPinInputRaspi4( uint8_t pin )
     uint32_t registerMask = 0x7 << posInReg*3;
     uint32_t function = GPIO_INPUT << posInReg*3;
 
-    uint32_t newRegValue = (gpioMem[GPFSELx] & ~registerMask) | (function & registerMask);
-    gpioMem[GPFSELx] = newRegValue;
+    uint32_t newRegValue = (gpio4Mem[GPFSELx] & ~registerMask) | (function & registerMask);
+    gpio4Mem[GPFSELx] = newRegValue;
     return 0;
 }
 int readPinRaspi4( uint8_t pin )
@@ -127,14 +120,14 @@ int readPinRaspi4( uint8_t pin )
 
     if( pin < 32 )
     {
-        myReg = gpioMem[0xD];
+        myReg = gpio4Mem[0xD];
         //cout << "getPin: " << hex << myReg << endl;
         //cout << "getMask: " << (1 << pin) << endl;
     }
     else
     {
         pin -=32;
-        myReg = gpioMem[0xE];
+        myReg = gpio4Mem[0xE];
     }
 
     if( ((1 << pin) & myReg) > 0 )
@@ -149,12 +142,12 @@ int setPinRaspi4( uint8_t pin )
 {
     if( pin < 32 )
     {
-        gpioMem[0x7] = (1 << pin);      //offset in bytes: 0x1c
+        gpio4Mem[0x7] = (1 << pin);      //offset in bytes: 0x1c
     }
     else
     {
         pin -=32;
-        gpioMem[0x8] = (1 << pin);      //0x20
+        gpio4Mem[0x8] = (1 << pin);      //0x20
     }
     return 0;
 }
@@ -162,12 +155,12 @@ int unsetPinRaspi4( uint8_t pin )
 {
     if( pin < 32 )
     {
-        gpioMem[0xA] = (1 << pin);      //offset in bytes: 0x1c
+        gpio4Mem[0xA] = (1 << pin);      //offset in bytes: 0x1c
     }
     else
     {
         pin -=32;
-        gpioMem[0xB] = (1 << pin);      //0x20
+        gpio4Mem[0xB] = (1 << pin);      //0x20
     }
     return 0;
 }
