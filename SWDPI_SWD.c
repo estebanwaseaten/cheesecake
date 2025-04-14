@@ -30,14 +30,14 @@ void SWDGPIOBBD_openDevice( void )
 
 int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 {
-	uint8_t lowLevelCmd = ((uint8_t*)cmd)[0];
-	uint8_t *ack = &((uint8_t*)cmd)[3];
-	uint32_t *data = &((uint32_t*)cmd)[1];
+	uint8_t lowLevelCmd = (((uint8_t*)cmd)[0]);
+	uint8_t *ack = &(((uint8_t*)cmd)[3]);
+	uint32_t *data = &(((uint32_t*)cmd)[1]);
 
 	//1. connection sequence
 	//SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
 
-	//pr_info("SWDGPIOBBD_transfer() cmd: %x data %x", (uint32_t)lowLevelCmd, data );
+	//pr_info("SWDGPIOBBD_transfer() before cmd: %x data: %x", (uint32_t)lowLevelCmd, *data );
 	if( lowLevelCmd > 0 )	//low level transfer
 	{
 		if( lowLevelCmd & 0x20 )	//0 for write, 1 for read
@@ -58,6 +58,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 			SWDGPIOBBD_cycleTurnaround2Write();
 			SWDGPIOBBD_receiveData( data );
 		}
+		//pr_info("SWDGPIOBBD_transfer() after cmd: %x data %x", (uint32_t)lowLevelCmd, *data );
 	}
 	else
 	{

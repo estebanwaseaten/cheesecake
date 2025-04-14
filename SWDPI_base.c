@@ -177,13 +177,13 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		return -1;
 	}
 
-	if( (len % 8) != 0 ) // only accept full command or list of full commands
+	if( (len % 8) != 0 ) // only accept single command or list of commands (multiples of 64 bits (8 bytes))
 	{
 		pr_warn("write fail - wrong size \n");
 		return SWDPI_ERR_WRONG_RW_SIZE;
 	}
 
-	if( receiveBuffer_level != 0 )//still need to receive something first (NEED ERROR CODES)
+	if( receiveBuffer_level != 0 ) //can only write if receive buffer is empty
 	{
 		pr_warn("write fail - receive buffer not empty \n");
 		return SWDPI_ERR_RECBUF_NOTEMPTY;
@@ -196,7 +196,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	//4. execute... only reply buffer is empty, we receive new commands...
 	int count = len / 8;
 	uint64_t tempBuffer = 0;
-	uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
+	//uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
 
 	if( count >= sendBuffer_size )
 	{
@@ -213,7 +213,6 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		if( tempBuffer == 0 )
 		{
 			//reset!
-
 			return -1;
 		}
 
@@ -225,8 +224,8 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 			return -1;
 		}
 		*/
+
 		//add to buffer:
-		pr_info("add to send buffer: 0x%x - 0x%x\n", tempBuffer32[0], tempBuffer32[1]);
 		sendBuffer[i] = tempBuffer;
 	}
 
@@ -234,20 +233,18 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 
 	//start actually sending (whole sequence with one jtag2swd first):
 	int reply = 0;
+
 	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
 
-	//for debug
-	
-
-	for (size_t i = 0; i < count; i++)
+	for( int i = 0; i < count; i++ )
 	{
-		pr_info("send buffer before transfer: 0x%x", sendBuffer[i]);
+		pr_info("send buffer before transfer: 0x%x 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		reply = SWDGPIOBBD_transfer( &sendBuffer[i] );
 		if( reply < 0 )
 		{
 			return reply;	//abort
 		}
-		pr_info("send buffer after transfer: 0x%x", sendBuffer[i]);
+		pr_info("send buffer after transfer: 0x%x 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
 		receiveBuffer_level++;
 	}
@@ -289,16 +286,6 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 		return -1;
 	}
 
-	uint64_t *tempBuffer = (uint64_t*)kcalloc(count, sizeof(uint64_t), GFP_KERNEL);
-
-	for( int i = 0; i < count; i++ )
-	{
-		pr_info("receiveBuffer_levelRead: %d \n", receiveBuffer_levelRead );
-		tempBuffer[i] = receiveBuffer[receiveBuffer_levelRead];
-		receiveBuffer_levelRead++;
-	}
-	pr_info("receiveBuffer_levelRead: %d \n", receiveBuffer_levelRead );
-
 
 	//rest if receive buffer is empty
 	if( receiveBuffer_level == receiveBuffer_levelRead )
@@ -307,6 +294,10 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 		receiveBuffer_levelRead = 0;
 		pr_info("reset levels to zero. \n" );
 	}
+
+
+
+	copy_to_user(buf, receiveBuffer, len);
 
 
 /*	uint32_t	kernel_buffer[2] = {0x0, };
@@ -336,9 +327,9 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 
 	copy_to_user(buf, &kernel_buffer, mem_size);*/
 
-	copy_to_user(buf, &tempBuffer, len);
 
-	kfree( tempBuffer );
+
+
 
 	SWDGPIOBBD_readwritelock = 0;
 	return 0;
