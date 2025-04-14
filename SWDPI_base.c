@@ -75,8 +75,8 @@ uint32_t sendBuffer_size = 64;
 uint64_t *receiveBuffer;
 uint32_t receiveBuffer_size = 64;
 
-uint32_t sendBuffer_level = 0;
-uint32_t receiveBuffer_Level = 0;
+uint32_t receiveBuffer_level = 0;
+uint32_t receiveBuffer_levelRead = 0;
 
 
 //device ID (major/minor)
@@ -158,8 +158,8 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		return -1;
 	}
 
-	sendBuffer_level = 0;
-	receiveBuffer_Level = 0;
+	receiveBuffer_level = 0;
+	receiveBuffer_levelRead = 0;
 	SWDGPIOBBD_readwritelock = 0;
 
 
@@ -183,7 +183,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		return SWDPI_ERR_WRONG_RW_SIZE;
 	}
 
-	if( receiveBuffer_Level != 0 )//still need to receive something first (NEED ERROR CODES)
+	if( receiveBuffer_level != 0 )//still need to receive something first (NEED ERROR CODES)
 	{
 		pr_warn("write fail - receive buffer not empty \n");
 		return SWDPI_ERR_RECBUF_NOTEMPTY;
@@ -198,7 +198,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	uint64_t tempBuffer = 0;
 	uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
 
-	if( (count + sendBuffer_level) >= sendBuffer_size )
+	if( count >= sendBuffer_size )
 	{
 		pr_warn("write fail - buffer full \n");
 		return -1;
@@ -208,7 +208,14 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	for (size_t i = 0; i < count; i++)
 	{
 		//tempBuffer = *((uint64_t*)buf);
-		copy_from_user(&tempBuffer, buf, len);
+		copy_from_user(&tempBuffer, &buf[8*i], 8);	//copy 64bits per loop
+
+		if( tempBuffer == 0 )
+		{
+			//reset!
+
+			return -1;
+		}
 
 		/* at least check if Parity is correct?
 		if( checkCmd( tempBuffer ) < 0 )
@@ -220,17 +227,32 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		*/
 		//add to buffer:
 		pr_info("add to send buffer: 0x%x - 0x%x\n", tempBuffer32[0], tempBuffer32[1]);
-		sendBuffer[sendBuffer_level] = tempBuffer;
-		sendBuffer_level++;
+		sendBuffer[i] = tempBuffer;
 	}
 
 
-	//start sending:
-	for (size_t i = 0; i < count; i++) {
-		/* code */
+
+	//start actually sending (whole sequence with one jtag2swd first):
+	int reply = 0;
+	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
+
+	//for debug
+	
+
+	for (size_t i = 0; i < count; i++)
+	{
+		pr_info("send buffer before transfer: 0x%x", sendBuffer[i]);
+		reply = SWDGPIOBBD_transfer( &sendBuffer[i] );
+		if( reply < 0 )
+		{
+			return reply;	//abort
+		}
+		pr_info("send buffer after transfer: 0x%x", sendBuffer[i]);
+		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
+		receiveBuffer_level++;
 	}
 
-	return 0;
+	return receiveBuffer_level;
 }
 
 static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
@@ -246,25 +268,48 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 		return SWDPI_ERR_WRONG_RW_SIZE;
 	}
 
-	//now process the full!!! read buffer...
-	//receiveBuffer needs to be FIFO?
+	int count = len / 8;
 
-	//if receiveBuffer is empty --> run new transfer
-	//else if receiverBuffer has sth --> return that first --> receiveBuffer needs to be empty before transfer
-	if( receiveBuffer_Level == 0 )
+	if( receiveBuffer_level == 0 )
 	{
-		//transfer & readout (first)
-
+		//nothing to read
+		pr_warn("receiveBuffer_level is zero! \n");
+		return -1;
 	}
-	else
+	if( receiveBuffer_level == receiveBuffer_levelRead )
 	{
-		//readout
+		receiveBuffer_level = 0;
+		receiveBuffer_levelRead = 0;
+		pr_warn("receiveBuffer_level is receiveBuffer_levelRead! \n");
+		return -1;
+	}
+	if( count > (receiveBuffer_level - receiveBuffer_levelRead ))
+	{
+		pr_warn("trying to read more than available \n");
+		return -1;
+	}
 
+	uint64_t *tempBuffer = (uint64_t*)kcalloc(count, sizeof(uint64_t), GFP_KERNEL);
+
+	for( int i = 0; i < count; i++ )
+	{
+		pr_info("receiveBuffer_levelRead: %d \n", receiveBuffer_levelRead );
+		tempBuffer[i] = receiveBuffer[receiveBuffer_levelRead];
+		receiveBuffer_levelRead++;
+	}
+	pr_info("receiveBuffer_levelRead: %d \n", receiveBuffer_levelRead );
+
+
+	//rest if receive buffer is empty
+	if( receiveBuffer_level == receiveBuffer_levelRead )
+	{
+		receiveBuffer_level = 0;
+		receiveBuffer_levelRead = 0;
+		pr_info("reset levels to zero. \n" );
 	}
 
 
-
-	uint32_t	kernel_buffer[2] = {0x0, };
+/*	uint32_t	kernel_buffer[2] = {0x0, };
 	uint32_t 	mem_size = 8;
 
 	//1. >= 50 cycles high:
@@ -272,17 +317,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	uint32_t	data = 0;
 	uint8_t		ack = 0;
 
-	//use spinlock to not get interrupted during the transfer
-
-
-	//does not seem to be necessary:
-	//static spinlock_t lock;
-	//unsigned long flags;
-	//spin_lock_init(&lock);
-	//spin_lock_irqsave( &lock, flags);
-
 	//SWDGPIOBBD_print_command( SWD_CMD_READ_IDCODE );
-
 
 	//1. connection sequence
 	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
@@ -294,20 +329,43 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	SWDGPIOBBD_receiveData( &data );
 	SWDGPIOBBD_cycleTurnaround2Write();
 
-
-	SWDGPIOBBD_command( 0 );
-
-	//does not seem to be necessary:
-	//spin_unlock_irqrestore( &lock, flags);
-
 	kernel_buffer[0] = ack;
 	kernel_buffer[1] = data;
 
-	copy_to_user(buf, &kernel_buffer, mem_size);
+	//copy_to_user(buf, &kernel_buffer, mem_size);
+
+	copy_to_user(buf, &kernel_buffer, mem_size);*/
+
+	copy_to_user(buf, &tempBuffer, len);
+
+	kfree( tempBuffer );
 
 	SWDGPIOBBD_readwritelock = 0;
 	return 0;
 }
+
+
+/* working sequence:
+//use spinlock to not get interrupted during the transfer
+//does not seem to be necessary:
+//static spinlock_t lock;
+//unsigned long flags;
+//spin_lock_init(&lock);
+//spin_lock_irqsave( &lock, flags);
+
+//1. connection sequence
+SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
+
+//2. get IDCODE
+SWDGPIOBBD_command( SWD_CMD_READ_IDCODE );
+SWDGPIOBBD_cycleTurnaround2Read();
+SWDGPIOBBD_receiveAck( &ack );
+SWDGPIOBBD_receiveData( &data );
+SWDGPIOBBD_cycleTurnaround2Write();
+
+//does not seem to be necessary:
+//spin_unlock_irqrestore( &lock, flags);
+*/
 
 static int SWDGPIOBBD_release(struct inode *inode, struct file *file)
 {

@@ -40,6 +40,8 @@ struct swd_ioc_transfer
 int SWDGPIOBBD_initRaspi( uint8_t raspi );
 void SWDGPIOBBD_openDevice( void );
 
+int SWDGPIOBBD_transfer( uint64_t *cmd );
+
 void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
 void SWDGPIOBBD_print_command( uint8_t cmd );
 void SWDGPIOBBD_command( uint8_t cmd );				//LSB!

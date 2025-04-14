@@ -28,6 +28,47 @@ void SWDGPIOBBD_openDevice( void )
 
 }
 
+int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
+{
+	uint8_t lowLevelCmd = ((uint8_t*)cmd)[0];
+	uint8_t *ack = &((uint8_t*)cmd)[3];
+	uint32_t *data = &((uint32_t*)cmd)[1];
+
+	//1. connection sequence
+	//SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
+
+	//pr_info("SWDGPIOBBD_transfer() cmd: %x data %x", (uint32_t)lowLevelCmd, data );
+	if( lowLevelCmd > 0 )	//low level transfer
+	{
+		if( lowLevelCmd & 0x20 )	//0 for write, 1 for read
+		{
+			//read
+			SWDGPIOBBD_command( lowLevelCmd );
+			SWDGPIOBBD_cycleTurnaround2Read();
+			SWDGPIOBBD_receiveAck( ack );
+			SWDGPIOBBD_receiveData( data );
+			SWDGPIOBBD_cycleTurnaround2Write();
+		}
+		else
+		{
+			//write
+			SWDGPIOBBD_command( lowLevelCmd );
+			SWDGPIOBBD_cycleTurnaround2Read();
+			SWDGPIOBBD_receiveAck( ack );
+			SWDGPIOBBD_cycleTurnaround2Write();
+			SWDGPIOBBD_receiveData( data );
+		}
+	}
+	else
+	{
+		return -100;	//whatever
+	}
+	return 0;
+}
+
+
+
+
 int SWDGPIOBBD_initRaspi( uint8_t raspi )
 {
 	int response = 0;

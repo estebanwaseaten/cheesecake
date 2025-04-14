@@ -25,8 +25,8 @@
 
 
 
-
-
+//raw commands
+#define SWD_CMD_READ_IDCODE 0xA5
 
 
 

@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/daniel/projects/cheesecake/cheesetest.c" "CMakeFiles/cheesetest.dir/cheesetest.c.o" "gcc" "CMakeFiles/cheesetest.dir/cheesetest.c.o.d"
+  "/home/wegkamp/development/cheesecake/cheesetest.c" "CMakeFiles/cheesetest.dir/cheesetest.c.o" "gcc" "CMakeFiles/cheesetest.dir/cheesetest.c.o.d"
   )
 
 # Targets to which this target links.

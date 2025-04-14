@@ -24,8 +24,12 @@ int main( void )
 
     //uint64_t test = 0xFFFFFFFFFFFFFFFE; //0xA5 << 56; //shift all to the left (left 8 bits are for direct commands)
     int reply = 0;
-    uint32_t myReadBuffer[2];
+    uint32_t myReadBuffer[4];
 
+    reply = write( cake, test, 8 );                //write a single cmd
+    printf( "write response: %d\n", reply );
+    reply = write( cake, test, 8 );                //write a single cmd
+    printf( "write response: %d\n", reply );
     reply = write( cake, test, 8 );                //write a single cmd
     printf( "write response: %d\n", reply );
     /*reply = write( cake, &test, 32 );
@@ -33,9 +37,23 @@ int main( void )
     reply = write( cake, &test, 512 );
     printf( "write response: %d\n", reply );*/
 
-    read(cake, &myReadBuffer, 8);   //read 4 bytes -->> always reads IDCODE
+    reply = read(cake, &myReadBuffer, 8);   //read 4 bytes -->> always reads IDCODE
+    if ( reply < 0)
+    {
+        printf( "read error response: %d\n", reply );
+    }
+    else
+    {
+        printf( "test read: 0x%x 0x%x \n", myReadBuffer[0], myReadBuffer[1] );
+    }
 
-    printf( "test read: 0x%x 0x%x \n", myReadBuffer[0], myReadBuffer[1] );
+    myReadBuffer[0] = 0;
+    myReadBuffer[1] = 0;
+
+    reply = write( cake, test, 8 );                //write a single cmd
+    printf( "write response: %d\n", reply );
+    reply = read(cake, &myReadBuffer, 16);   //read 4 bytes -->> always reads IDCODE
+    printf( "test read: %d 0x%x 0x%x \n", reply, myReadBuffer[0], myReadBuffer[1] );
 
     close( cake );
 
