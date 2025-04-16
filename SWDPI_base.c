@@ -166,11 +166,12 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-//need to write exactly 64bits or multiples...
-static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t * off)
+//need to write exactly 64bits (8bytes) or multiples...
+static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t *off)
 {
 	pr_info("Driver Write Function Called...!!!\n");
-
+	pr_info("len: %d\n", len);
+	pr_info("off: %d\n", off);
 	if( SWDGPIOBBD_readwritelock == 1 )
 	{
 		pr_warn("write fail - currently in read action \n");
@@ -205,6 +206,8 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	}
 
 
+
+
 	for (size_t i = 0; i < count; i++)
 	{
 		//tempBuffer = *((uint64_t*)buf);
@@ -230,6 +233,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	}
 
 
+	pr_info("write %d commands \n", count );
 
 	//start actually sending (whole sequence with one jtag2swd first):
 	int reply = 0;
@@ -238,13 +242,13 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 
 	for( int i = 0; i < count; i++ )
 	{
-		pr_info("send buffer before transfer: 0x%x 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
+		pr_info("send buffer before transfer: 0x%x data: 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		reply = SWDGPIOBBD_transfer( &sendBuffer[i] );
 		if( reply < 0 )
 		{
 			return reply;	//abort
 		}
-		pr_info("send buffer after transfer: 0x%x 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
+		pr_info("send buffer after transfer: 0x%x data: 0x%x", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
 		receiveBuffer_level++;
 	}
@@ -252,6 +256,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	return receiveBuffer_level;
 }
 
+//needs to return number of bytes or 0 for EOF
 static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
 {
 	pr_info("Driver Read Function Called...!!!\n");

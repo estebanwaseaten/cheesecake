@@ -56,7 +56,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 			SWDGPIOBBD_cycleTurnaround2Read();
 			SWDGPIOBBD_receiveAck( ack );
 			SWDGPIOBBD_cycleTurnaround2Write();
-			SWDGPIOBBD_receiveData( data );
+			SWDGPIOBBD_sendData( data );	//write data!!!
 		}
 		//pr_info("SWDGPIOBBD_transfer() after cmd: %x data %x", (uint32_t)lowLevelCmd, *data );
 	}
@@ -153,6 +153,7 @@ void SWDGPIOBBD_receiveAck( uint8_t *ack )
    *ack = ackreply;
 }
 
+//LSB first...
 int SWDGPIOBBD_receiveData( uint32_t *data )
 {
    uint32_t	bitRead;
@@ -182,6 +183,26 @@ int SWDGPIOBBD_receiveData( uint32_t *data )
    return -1;	//parity mismatch
 }
 
+//LSB first
+int SWDGPIOBBD_sendData( uint32_t *data )
+{
+   uint32_t	bitWrite;
+   uint32_t datareply = 0;
+   uint32_t parityCount = 0;
+
+   for (int i = 0; i < 32; i++)
+   {
+	   bitWrite = (*data >> i) & 0x1;
+
+	   SWDGPIOBBD_cycleWrite( bitWrite );
+
+	   parityCount += bitWrite;
+   }
+   SWDGPIOBBD_cycleWrite( parityCount & 0x1 );	//parity bit - 1 for odd
+
+	return 0;
+}
+
 
 
 //// try a few things. 1. clock idles high, one clock cycle is off-on, change output on beginning of off-on cycle
@@ -207,6 +228,7 @@ uint8_t SWDGPIOBBD_cycleRead(void)
    //udelay(1);	//to be safe???	now its too late
    //value += SWDPI_gpio_interface.readPin( dataPin );
    //read pin
+
 
    udelay(half_period_us);
 

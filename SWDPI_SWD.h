@@ -46,6 +46,7 @@ void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
 void SWDGPIOBBD_print_command( uint8_t cmd );
 void SWDGPIOBBD_command( uint8_t cmd );				//LSB!
 int SWDGPIOBBD_receiveData( uint32_t *data );
+int SWDGPIOBBD_sendData( uint32_t *data );
 void SWDGPIOBBD_receiveAck( uint8_t *ack );
 void SWDGPIOBBD_cycleTurnaround2Read(void);
 void SWDGPIOBBD_cycleTurnaround2Write(void);
