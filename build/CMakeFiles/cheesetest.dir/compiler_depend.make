@@ -37,6 +37,17 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
   /usr/include/aarch64-linux-gnu/bits/getopt_posix.h \
   /usr/include/aarch64-linux-gnu/bits/getopt_core.h \
   /usr/include/aarch64-linux-gnu/bits/unistd_ext.h \
+  /usr/include/stdio.h \
+  /usr/lib/gcc/aarch64-linux-gnu/12/include/stdarg.h \
+  /usr/include/aarch64-linux-gnu/bits/types/__fpos_t.h \
+  /usr/include/aarch64-linux-gnu/bits/types/__mbstate_t.h \
+  /usr/include/aarch64-linux-gnu/bits/types/__fpos64_t.h \
+  /usr/include/aarch64-linux-gnu/bits/types/__FILE.h \
+  /usr/include/aarch64-linux-gnu/bits/types/FILE.h \
+  /usr/include/aarch64-linux-gnu/bits/types/struct_FILE.h \
+  /usr/include/aarch64-linux-gnu/bits/stdio_lim.h \
+  /usr/include/aarch64-linux-gnu/bits/floatn.h \
+  /usr/include/aarch64-linux-gnu/bits/floatn-common.h \
   /home/wegkamp/development/cheesecake/SWDPI_base.h \
   /usr/include/linux/types.h \
   /usr/lib/linux/uapi/arm64/asm/types.h \
@@ -55,17 +66,27 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
 
 /usr/include/linux/stddef.h:
 
-/usr/include/linux/posix_types.h:
-
 /usr/include/asm-generic/bitsperlong.h:
-
-/usr/lib/linux/uapi/arm64/asm/bitsperlong.h:
 
 /usr/include/asm-generic/types.h:
 
 /usr/lib/linux/uapi/arm64/asm/types.h:
 
 /home/wegkamp/development/cheesecake/SWDPI_base.h:
+
+/usr/include/aarch64-linux-gnu/bits/floatn-common.h:
+
+/usr/lib/linux/uapi/arm64/asm/bitsperlong.h:
+
+/usr/include/aarch64-linux-gnu/bits/stdio_lim.h:
+
+/usr/include/aarch64-linux-gnu/bits/types/struct_FILE.h:
+
+/usr/include/aarch64-linux-gnu/bits/types/__fpos64_t.h:
+
+/usr/include/linux/posix_types.h:
+
+/usr/include/stdio.h:
 
 /usr/include/aarch64-linux-gnu/bits/getopt_core.h:
 
@@ -75,11 +96,15 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
 
 /usr/include/asm-generic/int-ll64.h:
 
+/usr/lib/gcc/aarch64-linux-gnu/12/include/stdarg.h:
+
 /usr/lib/gcc/aarch64-linux-gnu/12/include/stddef.h:
 
 /usr/include/aarch64-linux-gnu/bits/environments.h:
 
 /usr/include/aarch64-linux-gnu/bits/posix_opt.h:
+
+/usr/include/aarch64-linux-gnu/bits/types/__fpos_t.h:
 
 /usr/include/aarch64-linux-gnu/sys/cdefs.h:
 
@@ -88,6 +113,8 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
 /usr/include/aarch64-linux-gnu/bits/struct_stat.h:
 
 /usr/include/features.h:
+
+/usr/include/aarch64-linux-gnu/bits/types/__FILE.h:
 
 /usr/include/aarch64-linux-gnu/bits/wchar.h:
 
@@ -131,6 +158,8 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
 
 /usr/include/aarch64-linux-gnu/bits/types/struct_timespec.h:
 
+/usr/include/aarch64-linux-gnu/bits/types/FILE.h:
+
 /usr/include/unistd.h:
 
 /usr/include/stdint.h:
@@ -142,6 +171,10 @@ CMakeFiles/cheesetest.dir/cheesetest.c.o: /home/wegkamp/development/cheesecake/c
 /usr/include/linux/types.h:
 
 /usr/include/aarch64-linux-gnu/bits/types/time_t.h:
+
+/usr/include/aarch64-linux-gnu/bits/floatn.h:
+
+/usr/include/aarch64-linux-gnu/bits/types/__mbstate_t.h:
 
 /usr/include/aarch64-linux-gnu/bits/fcntl-linux.h:
 

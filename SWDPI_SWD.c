@@ -40,9 +40,10 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 	//pr_info("SWDGPIOBBD_transfer() before cmd: %x data: %x", (uint32_t)lowLevelCmd, *data );
 	if( lowLevelCmd > 0 )	//low level transfer
 	{
-		if( lowLevelCmd & 0x20 )	//0 for write, 1 for read
+		if( lowLevelCmd & 0x4 )	//0 for write, 1 for read
 		{
 			//read
+			pr_info("read operation!\n");
 			SWDGPIOBBD_command( lowLevelCmd );
 			SWDGPIOBBD_cycleTurnaround2Read();
 			SWDGPIOBBD_receiveAck( ack );
@@ -52,6 +53,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 		else
 		{
 			//write
+			pr_info("write operation!\n");
 			SWDGPIOBBD_command( lowLevelCmd );
 			SWDGPIOBBD_cycleTurnaround2Read();
 			SWDGPIOBBD_receiveAck( ack );

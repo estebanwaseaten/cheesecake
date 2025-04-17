@@ -8,21 +8,22 @@
 #ifndef REGISTERS_H
 #define REGISTERS_H
 
+// LSB means we have to flip the order (read bits from right to left)
 
 
-//cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1
+//cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1 OTHER WAY AROUND!!!
 // CMDS for DEBUG PORT REGS:
 #define DP_ABORT_CMD    0x81      // 0b10000001
 #define DP_IDCODE_CMD   0xA5      // 0b10100101
-
+                                     // 10pyyra1
 //depends on CTRLSEL bit in SELECT register below
-#define DP_CTRLSTAT_R_CMD 0xB1       // 0b10110001  CTRLSEL 0
-#define DP_WIRECTRL_R_CMD 0xB1       //same         CTRLSEL 1
-#define DP_CTRLSTAT_W_CMD 0x95       // 0b10010101  CTRLSEL 0
-#define DP_WIRECTRL_W_CMD 0x95       //same         CTRLSEL 1
+#define DP_CTRLSTAT_R_CMD 0x8D       // 0b10001101  CTRLSEL 0
+#define DP_WIRECTRL_R_CMD 0x8D       //same         CTRLSEL 1
+#define DP_CTRLSTAT_W_CMD 0xA9       // 0b10101001  CTRLSEL 0
+#define DP_WIRECTRL_W_CMD 0xA9       //same         CTRLSEL 1
 
-#define DP_READRE_CMD   0xA9          // 0b10101001
-#define DP_SELECT_CMD   0x8D          // 0b10001101
+#define DP_READRE_CMD   0x95          // 0b10010101
+#define DP_SELECT_CMD   0xB1          // 0b10110001
 
 #define DP_READBUF_CMD  0xBD          // 0b10111101
 #define DP_ROUTESEL_CMD 0x99            //optional/undefined
@@ -75,7 +76,7 @@
 //....
 
 // 0xF:
-// 0xF0 reserved
+// 0xF0 reserved 
 // 0xF4 Configuration Reg (CFG)
 // 0xF8 Debug Base Addr (BASE)
 // 0xFC Identification Register
@@ -92,15 +93,15 @@
 
 //cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1
 
-#define MEMAP_READ0_CMD     0xE1    // 0b11100001
-#define MEMAP_READ1_CMD     0xF5    // 0b11110101
-#define MEMAP_READ2_CMD     0xED    // 0b11101101
-#define MEMAP_READ3_CMD     0xF9    // 0b11111001
+#define MEMAP_READ0_CMD     0x87    // 0b10000111
+#define MEMAP_READ1_CMD     0xAF    // 0b10101111
+#define MEMAP_READ2_CMD     0xB7    // 0b10110111
+#define MEMAP_READ3_CMD     0x9F    // 0b10011111
 
-#define MEMAP_WRITE0_CMD    0xC5    // 0b11000101
-#define MEMAP_WRITE1_CMD    0xD1    // 0b11010001
-#define MEMAP_WRITE2_CMD    0xC9    // 0b11001001
-#define MEMAP_WRITE3_CMD    0xDD    // 0b11011101
+#define MEMAP_WRITE0_CMD    0xA3    // 0b10100011
+#define MEMAP_WRITE1_CMD    0x8B    // 0b10001011
+#define MEMAP_WRITE2_CMD    0x93    // 0b10010011
+#define MEMAP_WRITE3_CMD    0xBB    // 0b10111011
 
 
 #endif

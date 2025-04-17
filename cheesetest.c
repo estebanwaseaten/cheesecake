@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <fcntl.h>      // O_RDWR | O_SYNC etc
 #include <unistd.h>     //close()
+#include <stdio.h>
 
 #include "SWDPI_base.h"
 #include "registers.h"
@@ -26,21 +27,29 @@ int main( void )
         printf( "failed to connect to driver!\n" );
     }
 
+
+    //DATA is stored LSB ... but each byte is transmitted in order. To transmit a value of 0xFF00FF00, we have to write the value backwards here! 00FF00FF
+
     //idea:
     // 1. write 32 bit cmd + 32 bit data (or 0x0 for reads) into the file repeatedly
     // 2. read same amount of lines --> a) triggers communication and b) returns ack + data/0x0
+    // CMD: 32bits, DATA: 32bits
+    // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)], DATA: [7-0], [15-8], [23-16], [31-24],               a bit of a weird ordering for byte arrays
     uint8_t test[128] = { DP_IDCODE_CMD,        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,                    //low bytes send first...
-                          DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,        //bit 28 and 30   --> seems to work
-                          DP_CTRLSTAT_R_CMD,    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  
-                        //DP_SELECT_CMD, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00,        // [7...4]   APBANKSEL  --> selects active 4 word register bank on current AP...
-                    //    DP_SELECT_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,          //supposed to select the bank 0?
-                    //    MEMAP_READ0_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,        //fails
-                        //DP_READBUF_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,     //weird read of all FFs
-                        //DP_READRE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,         //breaks the com
-                        //DP_READBUF_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-                        DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                          DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50,        //bit 28 and 30   --> seems to work    & seems to be necessary to read out MEMAP_READ3_CMD etc in the NEXT RUN
+                         // DP_CTRLSTAT_R_CMD,    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_SELECT_CMD, 0x00, 0x00, 0x00, 0xF0, 0x00, 0x00, 0x00,              // [7...4]   APBANKSEL  --> selects active 4 word register bank on current AP...
+                          MEMAP_READ3_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,            //only works if DP_CTRLSTAT_W_CMD was written as above once before...
+                          //MEMAP_READ0_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          //DP_READBUF_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          //DP_READRE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          //DP_READBUF_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                          DP_IDCODE_CMD, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+
                         };
 
     uint8_t commandCount = 5;
