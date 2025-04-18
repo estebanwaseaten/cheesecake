@@ -186,7 +186,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 
 	if( receiveBuffer_level != 0 ) //can only write if receive buffer is empty
 	{
-		pr_warn("write fail - receive buffer not empty \n");
+		pr_warn("write fail - receive buffer not empty: %d \n", receiveBuffer_level );
 		return SWDPI_ERR_RECBUF_NOTEMPTY;
 	}
 
@@ -278,14 +278,16 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 		pr_warn("receiveBuffer_level is zero! \n");
 		return -1;
 	}
-	if( receiveBuffer_level == receiveBuffer_levelRead )
+
+	if( receiveBuffer_level == receiveBuffer_levelRead )		//all has been read but somehow levels have not been reset to zero
 	{
 		receiveBuffer_level = 0;
 		receiveBuffer_levelRead = 0;
 		pr_warn("receiveBuffer_level is receiveBuffer_levelRead! \n");
 		return -1;
 	}
-	if( count > (receiveBuffer_level - receiveBuffer_levelRead ))
+
+	if( count > (receiveBuffer_level - receiveBuffer_levelRead ))		//want to read more than is available
 	{
 		pr_warn("trying to read more than available \n");
 		return -1;
@@ -304,6 +306,15 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 
 	copy_to_user(buf, receiveBuffer, len);
 
+	receiveBuffer_levelRead += len/8;	//we count in 64bit words, but len is in 8bit bytes
+
+	//rest if receive buffer is empty
+	if( receiveBuffer_level == receiveBuffer_levelRead )
+	{
+		receiveBuffer_level = 0;
+		receiveBuffer_levelRead = 0;
+		pr_info("reset levels to zero. \n" );
+	}
 
 /*	uint32_t	kernel_buffer[2] = {0x0, };
 	uint32_t 	mem_size = 8;
@@ -337,7 +348,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 
 
 	SWDGPIOBBD_readwritelock = 0;
-	return 0;
+	return receiveBuffer_level - receiveBuffer_levelRead;
 }
 
 

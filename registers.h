@@ -29,6 +29,8 @@
 #define DP_ROUTESEL_CMD 0x99            //optional/undefined
 
 
+
+
 //DP_ABORT
 // [4] ORUNERRCLR, [3] WDERRCLR, [2] STKERRCLR, [1] STKCMPCLR, [0] DAPABORT
 // note set to 0x1 if you got a lot of WAIT responses e.g.
