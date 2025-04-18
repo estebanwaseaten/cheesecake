@@ -258,19 +258,17 @@ void SWDGPIOBBD_cycleWrite( uint8_t bit )
 
 void SWDGPIOBBD_cycleTurnaround2Read(void)
 {
-
-
    //unset clock pin
-   SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
    SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
-//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
+   SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
+   SWDPI_gpio_interface.setPinInput( dataPin );										//is this working??
 
+//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
 //	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );	//NONE
-   SWDPI_gpio_interface.setPinInput( dataPin );
 
    //none---> reply is full height, DOWN---> reply is half.
    udelay(half_period_us);
-   //unset data pin
+
    //set clock pin
    SWDPI_gpio_interface.setPin( clockPin );
    udelay(half_period_us);
@@ -280,11 +278,10 @@ void SWDGPIOBBD_cycleTurnaround2Read(void)
 void SWDGPIOBBD_cycleTurnaround2Write(void)
 {
    //unset clock pin
+   SWDPI_gpio_interface.unsetPin( dataPin );
    SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
-
-   //unset data pin
-    SWDPI_gpio_interface.unsetPin( dataPin );
    SWDPI_gpio_interface.setPinOutput( dataPin );
+
 //    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
    udelay(half_period_us);
 

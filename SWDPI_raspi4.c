@@ -89,6 +89,7 @@ int configPinPullRaspi4( uint8_t pin, uint32_t setting )        //what is settin
 
     return 0;
 }
+
 int setPinOutputRaspi4( uint8_t pin )
 {
     uint8_t GPFSELx = pin / 10;             //one register contains selects for 10 pins
@@ -102,6 +103,7 @@ int setPinOutputRaspi4( uint8_t pin )
 
     return 0;
 }
+
 int setPinInputRaspi4( uint8_t pin )
 {
     uint8_t GPFSELx = pin / 10;             //one register contains selects for 10 pins
@@ -114,6 +116,7 @@ int setPinInputRaspi4( uint8_t pin )
     gpio4Mem[GPFSELx] = newRegValue;
     return 0;
 }
+
 int readPinRaspi4( uint8_t pin )
 {
     uint32_t myReg;

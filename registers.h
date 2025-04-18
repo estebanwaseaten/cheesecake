@@ -76,7 +76,7 @@
 //....
 
 // 0xF:
-// 0xF0 reserved 
+// 0xF0 reserved
 // 0xF4 Configuration Reg (CFG)
 // 0xF8 Debug Base Addr (BASE)
 // 0xFC Identification Register
