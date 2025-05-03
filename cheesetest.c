@@ -92,6 +92,9 @@ int main( void )
     if( cake < 0 )
     {
         printf( "failed to connect to driver!\n" );
+        close( cake );
+
+        return -1;
     }
 
     read_ids( cake );
@@ -99,6 +102,8 @@ int main( void )
     read_mcu_id( cake );
 
     close( cake );
+
+    return 0;
 }
 
 
