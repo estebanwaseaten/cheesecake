@@ -199,7 +199,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	uint64_t tempBuffer = 0;
 	//uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
 
-	if( count >= sendBuffer_size )
+	if( count > sendBuffer_size )
 	{
 		pr_warn("write fail - buffer full \n");
 		return -1;

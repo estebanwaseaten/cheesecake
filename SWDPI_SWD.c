@@ -146,13 +146,14 @@ void SWDGPIOBBD_receiveAck( uint8_t *ack )
 {
    uint8_t ackreply = 0;
    //pr_info("ack order on wire: ");
-   for (int i = 0; i < 3; i++)		//on the wire: LSB first
+   for (int i = 0; i < 3; i++)		//on the wire: LSB first			//ack never received???
    {
        ackreply |= (SWDGPIOBBD_cycleRead() << i);
-       //pr_info("%d", (ackreply & (1 << i)));
+     //  pr_info("%d", (ackreply & (1 << i)));
    }
    //pr_info("\n");
    *ack = ackreply;
+   //*ack = 1;
 }
 
 //LSB first...
@@ -182,6 +183,7 @@ int SWDGPIOBBD_receiveData( uint32_t *data )
        return 0;
    }
 
+   pr_warn("parity mismatch!");
    return -1;	//parity mismatch
 }
 

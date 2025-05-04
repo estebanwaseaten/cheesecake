@@ -160,25 +160,26 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
 
     //4096 bits
 
-    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );      //64bits * 64
     uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t addressCounter = 0;
     uint32_t wordsDone = 0;
     uint32_t commandsDone;
     int reply = 0;
 
-    while( wordsDone < wordCount )
+    while( wordsDone < wordCount )      //read ONE word (4 bytes, 32bit) per transfer command. a transfer command has 64bit though.
     {
         cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
         cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
         cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
         cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;
         cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
-        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr;
+        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter*4;
         cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;   //initial read (no reply expected)
         commandsDone = 14;
 
-        //fill in remaining reads:
-        while( (wordsDone < wordCount) && (commandsDone < 64) )
+        //fill in remaining read commands:
+        while( (wordsDone < wordCount) && (commandsDone < 128) )
         {
             cmdArray32[commandsDone] = MEMAP_READ3_CMD;
             commandsDone++;
@@ -186,26 +187,102 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
             commandsDone++;
             wordsDone ++;
         }
-
         //send and receive
         reply = write( SWDPIfile, cmdArray32, commandsDone*4 );             //in bytes. each commandsDone has 4 bytes
         reply = read( SWDPIfile, replyArray32, commandsDone*4 );
 
         //print:
-        for( int i = 15; i < commandsDone; i+=2 )
+        for( int i = 14; i < commandsDone; i+=2 )
         {
-            //printf( "MEM-AP: 0x%08x\n", replyArray32[i]);
-            printf( "0x%08x ", replyArray32[i]);
+            if( ( addressCounter % 4 ) == 0 )
+            {
+                printf( "0x%08x: ", addressCounter*4 + baseAddr );
+            }
+            printf( "%08x ", replyArray32[i]);      //should be +1
 
-            if ( ((i - 13) % 8) == 0 )
+            if( ( ( addressCounter + 1 ) % 4) == 0 )
             {
                 printf( "\n" );
             }
+
+            addressCounter++;
         }
     }
-
+    printf( "\n" );
     free( cmdArray32 );
     free( replyArray32 );
+
+    close( SWDPIfile );
+}
+
+void stmdump( int baseAddr, int wordCount )        //wordCount is the number of words that are supposed to be displayed
+{
+    printf( "stmdump: base: 0x%x, words: %d\n", baseAddr, wordCount );
+    int SWDPIfile =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+
+    //need 6 commands for setup + wordcount reads + 1 (because read is delayed) = 7 + wordcount reads
+    //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be read from the MCU
+    char filenamestr[128];
+    printf( "please enter filename: " );
+    scanf( "%127[^\n]", filenamestr );
+
+    //check if file exists
+    FILE *file = fopen( filenamestr, "r");
+    if( file )
+    {
+        fclose(file);
+        printf( "file already exists - abort!\n" );
+        return 0;
+    }
+
+    //file does not exist (OR we cannot read it...)
+    file = fopen( filenamestr, "wb");
+
+
+
+    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );      //64bits * 64
+    uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t addressCounter = 0;
+    uint32_t wordsDone = 0;
+    uint32_t commandsDone;
+    int reply = 0;
+
+    while( wordsDone < wordCount )      //read ONE word (4 bytes, 32bit) per transfer command. a transfer command has 64bit though.
+    {
+        cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
+        cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
+        cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
+        cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;
+        cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
+        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter*4;
+        cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;   //initial read (no reply expected)
+        commandsDone = 14;
+
+        //fill in remaining reads:
+        while( (wordsDone < wordCount) && (commandsDone < 128) )
+        {
+            cmdArray32[commandsDone] = MEMAP_READ3_CMD;
+            commandsDone++;
+            cmdArray32[commandsDone] = 0;       //we read
+            commandsDone++;
+            wordsDone ++;
+        }
+        //send and receive
+        reply = write( SWDPIfile, cmdArray32, commandsDone*4 );             //in bytes. each commandsDone has 4 bytes
+        reply = read( SWDPIfile, replyArray32, commandsDone*4 );
+
+        //write to file:
+        for( int i = 14; i < commandsDone; i+=2 )
+        {
+            fwrite( &replyArray32[i+1], sizeof(replyArray32[i+1]), 1, file); // write 10 bytes from our buffer
+            addressCounter++;
+        }
+    }
+    printf( "\n" );
+    free( cmdArray32 );
+    free( replyArray32 );
+
+    fclose( file );
 
     close( SWDPIfile );
 }
@@ -262,25 +339,11 @@ int main( int argc, char *argv[] )
         printf( "-stmprint\n");
         stmprint( param2, param3 );
     }
-
-
-//    int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
-
-/*    if( cake < 0 )
+    else if ( strcmp(argv[1], "-stmdump") == 0 ) // -stmdump base-addr #ofWords
     {
-        printf( "failed to connect to driver!\n" );
-        close( cake );
-
-        return -1;
+        printf( "-stmdump\n");
+        stmdump( param2, param3 );
     }
-
-
-
-    read_ids( cake );
-    printf( "\n" );
-    read_mcu_id( cake );
-
-    close( cake );*/
 
     return 0;
 }
