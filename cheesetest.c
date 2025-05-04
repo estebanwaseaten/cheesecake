@@ -8,7 +8,10 @@
 #include "SWDPI_base.h"
 #include "registers.h"
 
-
+//for comparing:
+// hexyl
+// xxd -
+// vbindiff
 
 
 uint8_t cmd_helper( uint8_t ap, uint8_t read, uint8_t addr )
@@ -37,7 +40,7 @@ void read_mem( int file, int addr, int length )
 
 void read_ids( int file )       //reads some registers
 {
-    uint8_t cmdArray[6*8] = {
+    uint8_t cmdArray[7*8] = {
     // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)],        DATA: [7-0], [15-8], [23-16], [31-24],
                           DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
                           DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x50,       //bit 28 and 30  --> power up system & debug. seems to work    & seems to be necessary to read out MEMAP_READ3_CMD etc in the NEXT RUN
@@ -45,6 +48,7 @@ void read_ids( int file )       //reads some registers
                           DP_SELECT_CMD,        0x00, 0x00, 0x00,   0xF0,  0x00,   0x00,    0x00,       // [7...4]   APBANKSEL  --> selects active 4 word register bank on current AP...
 
                           MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //send read cmd
+                          MEMAP_READ2_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
                           DP_READBUF_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //actually reads the AP ID
                       };
 
@@ -52,18 +56,19 @@ void read_ids( int file )       //reads some registers
     //uint32_t cmdArray[6*2] =
 
 
-    int32_t myReadBuffer[6*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
+    int32_t myReadBuffer[7*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
     int reply = 0;
 
-    reply = write( file, cmdArray, 6*8 );                //write list of commands
+    reply = write( file, cmdArray, 7*8 );                //write list of commands
     //printf( "write response: %d\n", reply );
 
-    reply = read( file, &myReadBuffer, 6*8);   //read 4 bytes -->> always reads IDCODE
+    reply = read( file, &myReadBuffer, 7*8);   //read 4 bytes -->> always reads IDCODE
     //printf( "read response: %d\n", reply );
 
-    printf( "IDCODE: 0x%x\n", myReadBuffer[2*0 + 1]);     //IDCODE
-    printf( "AP=ID: 0x%x\n", myReadBuffer[2*5 + 1]);     //AP ID
-
+    printf( "IDCODE: 0x%08x\n", myReadBuffer[2*0 + 1]);     //IDCODE
+    printf( "MEM-AP info: \n");
+    printf( "DEBUG BASE: 0x%08x\n", myReadBuffer[2*5 + 1]);
+    printf( "AP=ID: 0x%08x\n", myReadBuffer[2*6 + 1]);     //AP ID
 }
 
 //this could be implemented in the driver as some higher level CMD resulting in the whole memory read portion terminated by a 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
@@ -150,18 +155,50 @@ void fileprint( char *path, int wordsToRead )
     }
 }
 
+
+//https://developer.arm.com/documentation/ka001375/latest/
+/*
+IMPORTANT NOTE FROM ARM:
+Automatic address increment is only guaranteed to operate on the bottom 10-bits of the address held in the TAR. Auto address incrementing of bit [10] and beyond is implementation defined. This means that auto address incrementing at a 1KB boundary is implementation defined. For example, if TAR[31:0] is set to 0x14A4, and the access size is word, successive accesses to the DRW increment TAR to 0x14A8, 0x14A, and so on, up to the end of the 1KB range at 0x17FC. At this point, the auto-increment behavior on the next DRW access is implementation defined.
+
+BUT THIS SHOUDL BE FINE... *(it fits to 400 though... )
+
+M1: Increments and wraps within a 1KB address boundary, for example, for word incrementing from 0x1400-0x17FC.
+If the start is at 0x14A0, then the counter increments to 0x17FC, wraps to 0x1400, then continues incrementing to 0x149C.
+
+M3: same but with 4KB boundary
+
+apparently this wraps... somehow...
+
+do we have to somehow reset the auto increment... ??? so strange!
+*/
 void stmprint( int baseAddr, int wordCount )        //wordCount is the number of words that are supposed to be displayed
 {
     printf( "stmdump: base: 0x%x, words: %d\n", baseAddr, wordCount );
     int SWDPIfile =  open("/dev/SWDPI", O_RDWR | O_SYNC);
 
     //need 6 commands for setup + wordcount reads + 1 (because read is delayed) = 7 + wordcount reads
-    //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be read from the MCU
+    //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be potentially read from the MCU in one running
+    //BUT auto address increment only works in bunches of 1024 bits --> only extract 32 words per request --> we align withe the 1024 boundary automatically --
+    // 7+ 32 = 39
+    if( (baseAddr % 4) != 0 )
+    {
+        printf( "base Address has to by word aligned!\n");
+        return;
+    }
 
-    //4096 bits
+    //base Addr must be multiple of 0x80, otherwise the auto addr increase fails
+    uint32_t baseOffset = (baseAddr % 0x80);
+    baseAddr -= baseOffset;     //now it is aligned
+    wordCount += baseOffset/4;  //add words otherwise we wont reach...
+    if( baseOffset != 0 )
+    {
+        printf( "automatically shifted base address by -0x%08x\n", baseOffset);
+    }
 
-    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );      //64bits * 64
-    uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
+
+    uint32_t *cmdArray32 = malloc( 39*2*sizeof(uint32_t) );      //64bits * 64 transfers
+    uint32_t *replyArray32 = malloc( 39*2*sizeof(uint32_t) );
     uint32_t addressCounter = 0;
     uint32_t wordsDone = 0;
     uint32_t commandsDone;
@@ -169,17 +206,18 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
 
     while( wordsDone < wordCount )      //read ONE word (4 bytes, 32bit) per transfer command. a transfer command has 64bit though.
     {
+        printf( "bunch:\n" );
         cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
         cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
         cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
         cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;
         cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
-        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter*4;
+        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter*4;                //this seems to be ok
         cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;   //initial read (no reply expected)
         commandsDone = 14;
 
         //fill in remaining read commands:
-        while( (wordsDone < wordCount) && (commandsDone < 128) )
+        while( (wordsDone < wordCount) && (commandsDone < 78) )   //aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
         {
             cmdArray32[commandsDone] = MEMAP_READ3_CMD;
             commandsDone++;
@@ -194,17 +232,19 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
         //print:
         for( int i = 14; i < commandsDone; i+=2 )
         {
-            if( ( addressCounter % 4 ) == 0 )
+            if( addressCounter >= baseOffset/4 )
             {
-                printf( "0x%08x: ", addressCounter*4 + baseAddr );
-            }
-            printf( "%08x ", replyArray32[i]);      //should be +1
+                if( ( addressCounter % 4 ) == 0 )
+                {
+                    printf( "0x%08x: ", addressCounter*4 + baseAddr );
+                }
+                printf( "%08x(%08x) ", replyArray32[i+1], replyArray32[i] );      //should be +1
 
-            if( ( ( addressCounter + 1 ) % 4) == 0 )
-            {
-                printf( "\n" );
+                if( ( ( addressCounter + 1 ) % 4) == 0 )
+                {
+                    printf( "\n" );
+                }
             }
-
             addressCounter++;
         }
     }
@@ -238,7 +278,20 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
     //file does not exist (OR we cannot read it...)
     file = fopen( filenamestr, "wb");
 
+    if( (baseAddr % 4) != 0 )
+    {
+        printf( "base Address has to by word aligned!\n");
+        return;
+    }
 
+    //base Addr must be multiple of 0x80, otherwise the auto addr increase fails
+    uint32_t baseOffset = (baseAddr % 0x80);
+    baseAddr -= baseOffset;     //now it is aligned
+    wordCount += baseOffset/4;  //add words otherwise we wont reach...
+    if( baseOffset != 0 )
+    {
+        printf( "automatically shifted base address by -0x%08x\n", baseOffset);
+    }
 
     uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );      //64bits * 64
     uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
@@ -259,7 +312,7 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
         commandsDone = 14;
 
         //fill in remaining reads:
-        while( (wordsDone < wordCount) && (commandsDone < 128) )
+        while( (wordsDone < wordCount) && (commandsDone < 78) )
         {
             cmdArray32[commandsDone] = MEMAP_READ3_CMD;
             commandsDone++;
@@ -274,7 +327,11 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
         //write to file:
         for( int i = 14; i < commandsDone; i+=2 )
         {
-            fwrite( &replyArray32[i+1], sizeof(replyArray32[i+1]), 1, file); // write 10 bytes from our buffer
+            if( addressCounter >= baseOffset/4 )
+            {
+                fwrite( &replyArray32[i+1], sizeof(replyArray32[i+1]), 1, file); // write 10 bytes from our buffer
+            }
+
             addressCounter++;
         }
     }
@@ -290,9 +347,9 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
 
 int main( int argc, char *argv[] )
 {
-    printf("param1: %s\n", argv[1]);
-    printf("param2: %s\n", argv[2]);
-    printf("param3: %s\n", argv[3]);
+    //printf("param1: %s\n", argv[1]);
+    //printf("param2: %s\n", argv[2]);
+    //printf("param3: %s\n", argv[3]);
 
     char *nullstr = "";
     char *argstr1 = nullstr;
@@ -322,7 +379,7 @@ int main( int argc, char *argv[] )
         }
     }
 
-    printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
+    //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
     if( strcmp(argstr1, "") == 0 )
     {
