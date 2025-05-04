@@ -9,8 +9,6 @@
 #define REGISTERS_H
 
 // LSB means we have to flip the order (read bits from right to left)
-
-
 //cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1 OTHER WAY AROUND!!!
 // CMDS for DEBUG PORT REGS:
 #define DP_ABORT_CMD    0x81      // 0b10000001

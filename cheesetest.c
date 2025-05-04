@@ -3,9 +3,13 @@
 #include <fcntl.h>      // O_RDWR | O_SYNC etc
 #include <unistd.h>     //close()
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "SWDPI_base.h"
 #include "registers.h"
+
+
+
 
 uint8_t cmd_helper( uint8_t ap, uint8_t read, uint8_t addr )
 {
@@ -24,10 +28,15 @@ uint64_t whole_cmd( uint8_t cmd, uint32_t data )
 }
 
 
-void read_ids( int file )
+// read memory
+void read_mem( int file, int addr, int length )
 {
-    const uint8_t commandCount = 6;
 
+}
+
+
+void read_ids( int file )       //reads some registers
+{
     uint8_t cmdArray[6*8] = {
     // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)],        DATA: [7-0], [15-8], [23-16], [31-24],
                           DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
@@ -40,13 +49,16 @@ void read_ids( int file )
                       };
 
 
+    //uint32_t cmdArray[6*2] =
+
+
     int32_t myReadBuffer[6*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
     int reply = 0;
 
-    reply = write( file, cmdArray, commandCount*8 );                //write list of commands
+    reply = write( file, cmdArray, 6*8 );                //write list of commands
     //printf( "write response: %d\n", reply );
 
-    reply = read( file, &myReadBuffer, commandCount*8);   //read 4 bytes -->> always reads IDCODE
+    reply = read( file, &myReadBuffer, 6*8);   //read 4 bytes -->> always reads IDCODE
     //printf( "read response: %d\n", reply );
 
     printf( "IDCODE: 0x%x\n", myReadBuffer[2*0 + 1]);     //IDCODE
@@ -57,8 +69,6 @@ void read_ids( int file )
 //this could be implemented in the driver as some higher level CMD resulting in the whole memory read portion terminated by a 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
 void read_mcu_id( int file )
 {
-    const uint8_t commandCount = 7;
-
     uint8_t cmdArray[7*8] = {
     // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)],        DATA: [7-0], [15-8], [23-16], [31-24],
                           DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
@@ -76,20 +86,187 @@ void read_mcu_id( int file )
       int32_t myReadBuffer[7*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
       int reply = 0;
 
-      reply = write( file, cmdArray, commandCount*8 );                //write list of commands
+      reply = write( file, cmdArray, 7*8 );                //write list of commands
      // printf( "write response: %d\n", reply );
 
-      reply = read( file, &myReadBuffer, commandCount*8);   //read 4 bytes -->> always reads IDCODE
+      reply = read( file, &myReadBuffer, 7*8);
       //printf( "read response: %d\n", reply );
 
       printf( "MCU ID: 0x%x\n", myReadBuffer[2*6 + 1]);     //AP ID
 }
 
-int main( void )
+void fileprint( char *path, int wordsToRead )
 {
-    int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+    //binary dump:
+    printf( "\ndump binary file:\n" );
 
-    if( cake < 0 )
+    FILE *binFilePtr = NULL;
+
+    binFilePtr = fopen( path, "rb");
+    if( binFilePtr == NULL )
+    {
+        printf( "file does not exist!\n" );
+    }
+
+    //read complete words only
+    uint8_t byteBuffer[4];
+    uint32_t *wordBuffer = (uint32_t*)byteBuffer;
+    int freadReply;
+
+    bool done = false;
+    printf( "words to read: %d\n", wordsToRead);
+    int wordsRead = 0;
+
+    if( wordsToRead == 0 )
+    {
+        wordsToRead = -1;
+    }
+
+    printf("\n0x%08x: ", 0);
+    while( !done )
+    {
+        freadReply = fread( byteBuffer, sizeof(byteBuffer), 1 , binFilePtr );
+
+        if( freadReply == 1 )   //all fine
+        {
+            printf("%08x ", wordBuffer[0]);
+        }
+        else
+        {
+            done = true;
+        }
+
+        wordsRead++;
+
+        if( (wordsRead % 4) == 0 )
+        {
+            printf("\n0x%08x: ", wordsRead*4);
+        }
+
+        if( wordsRead == wordsToRead )      //max given
+        {
+            done = true;
+        }
+    }
+}
+
+void stmprint( int baseAddr, int wordCount )        //wordCount is the number of words that are supposed to be displayed
+{
+    printf( "stmdump: base: 0x%x, words: %d\n", baseAddr, wordCount );
+    int SWDPIfile =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+
+    //need 6 commands for setup + wordcount reads + 1 (because read is delayed) = 7 + wordcount reads
+    //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be read from the MCU
+
+    //4096 bits
+
+    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t wordsDone = 0;
+    uint32_t commandsDone;
+    int reply = 0;
+
+    while( wordsDone < wordCount )
+    {
+        cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
+        cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
+        cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
+        cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;
+        cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
+        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr;
+        cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;   //initial read (no reply expected)
+        commandsDone = 14;
+
+        //fill in remaining reads:
+        while( (wordsDone < wordCount) && (commandsDone < 64) )
+        {
+            cmdArray32[commandsDone] = MEMAP_READ3_CMD;
+            commandsDone++;
+            cmdArray32[commandsDone] = 0;       //we read
+            commandsDone++;
+            wordsDone ++;
+        }
+
+        //send and receive
+        reply = write( SWDPIfile, cmdArray32, commandsDone*4 );             //in bytes. each commandsDone has 4 bytes
+        reply = read( SWDPIfile, replyArray32, commandsDone*4 );
+
+        //print:
+        for( int i = 15; i < commandsDone; i+=2 )
+        {
+            //printf( "MEM-AP: 0x%08x\n", replyArray32[i]);
+            printf( "0x%08x ", replyArray32[i]);
+
+            if ( ((i - 13) % 8) == 0 )
+            {
+                printf( "\n" );
+            }
+        }
+    }
+
+    free( cmdArray32 );
+    free( replyArray32 );
+
+    close( SWDPIfile );
+}
+
+
+int main( int argc, char *argv[] )
+{
+    printf("param1: %s\n", argv[1]);
+    printf("param2: %s\n", argv[2]);
+    printf("param3: %s\n", argv[3]);
+
+    char *nullstr = "";
+    char *argstr1 = nullstr;
+    char *argstr2 = nullstr;
+    char *argstr3 = nullstr;
+
+    long int param2 = 0;
+    long int param3  = 0;
+
+    char *ptr1;
+    char *ptr2;
+
+    if( argv[1] != NULL )
+    {
+        argstr1 = argv[1];
+
+        if( argv[2] != NULL )
+        {
+            argstr2 = argv[2];
+            param2 = strtol( argv[2], &ptr1, 0 );
+
+            if( argv[3] != NULL )   //if 2 == NULL --> 3 is meaningless
+            {
+                argstr3 = argv[3];
+                param3 = strtol( argv[3], &ptr2, 0 );
+            }
+        }
+    }
+
+    printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
+
+    if( strcmp(argstr1, "") == 0 )
+    {
+        int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+        read_ids( cake );
+    }
+    else if( strcmp(argv[1], "-fileprint") == 0 ) // -filedump filename #ofWords
+    {
+        printf( "-fileprint\n");
+        fileprint( argstr2, param3 );
+    }
+    else if ( strcmp(argv[1], "-stmprint") == 0 ) // -stmdump base-addr #ofWords
+    {
+        printf( "-stmprint\n");
+        stmprint( param2, param3 );
+    }
+
+
+//    int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+
+/*    if( cake < 0 )
     {
         printf( "failed to connect to driver!\n" );
         close( cake );
@@ -97,14 +274,18 @@ int main( void )
         return -1;
     }
 
+
+
     read_ids( cake );
     printf( "\n" );
     read_mcu_id( cake );
 
-    close( cake );
+    close( cake );*/
 
     return 0;
 }
+
+
 
 
 

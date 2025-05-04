@@ -220,9 +220,10 @@ uint8_t SWDGPIOBBD_cycleRead(void)
    //SWDPI_gpio_interface.unsetPin( dataPin );	//just in case - should be unset anyways
    //unsset clock pin
    SWDPI_gpio_interface.unsetPin( clockPin );
-   uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
 
    //read data pin
+   uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
+
    udelay(half_period_us);
 
    //set clock pin

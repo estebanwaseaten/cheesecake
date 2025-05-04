@@ -316,6 +316,17 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 		pr_info("reset levels to zero. \n" );
 	}
 
+
+
+
+
+
+
+	SWDGPIOBBD_readwritelock = 0;
+	return receiveBuffer_level - receiveBuffer_levelRead;
+}
+
+
 /*	uint32_t	kernel_buffer[2] = {0x0, };
 	uint32_t 	mem_size = 8;
 
@@ -342,14 +353,6 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	//copy_to_user(buf, &kernel_buffer, mem_size);
 
 	copy_to_user(buf, &kernel_buffer, mem_size);*/
-
-
-
-
-
-	SWDGPIOBBD_readwritelock = 0;
-	return receiveBuffer_level - receiveBuffer_levelRead;
-}
 
 
 /* working sequence:
