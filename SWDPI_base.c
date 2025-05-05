@@ -190,7 +190,6 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		return SWDPI_ERR_RECBUF_NOTEMPTY;
 	}
 
-
 	//1. copy to temp buffer
 	//2. check command
 	//3. add to main buffer
@@ -204,9 +203,6 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		pr_warn("write fail - buffer full \n");
 		return -1;
 	}
-
-
-
 
 	for (size_t i = 0; i < count; i++)
 	{
@@ -244,11 +240,13 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	{
 		pr_info("send buffer before transfer: 0x%x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		reply = SWDGPIOBBD_transfer( &sendBuffer[i] );
+		pr_info("send buffer after transfer: 0x%x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		if( reply < 0 )
 		{
+			pr_info("error %d aborting \n\n", reply);
 			return reply;	//abort
 		}
-		pr_info("send buffer after transfer: 0x%x data: 0x%x\n\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
+		pr_info("\n");
 		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
 		receiveBuffer_level++;
 	}

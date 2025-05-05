@@ -34,7 +34,12 @@
 // note set to 0x1 if you got a lot of WAIT responses e.g.
 
 //DP_IDCODE
-//...
+//[31:28] revision code (implementation defined)
+//[27:20] reserved
+//[16] pushed verify implemented or not
+//[15:12] DP architecture version --> 0x0 reserved, 0x1 DPv1, 0x2 DPv2
+//[11:1] DESIGNER
+//[1] RAO (read as one)
 
 //DP_CTRLSTAT (CTRLSEL bit = 0 in SELECT)
 // see ARM document 6-10

@@ -30,11 +30,23 @@ uint64_t whole_cmd( uint8_t cmd, uint32_t data )
     return result;
 }
 
-
-// read memory
-void read_mem( int file, int addr, int length )
+int findVersion( void )
 {
+    uint32_t cmdArray32[2] = {  DP_IDCODE_CMD, 0};
+    uint32_t replyArray32[2] = { 0, 0 };
 
+
+    int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
+
+    write( SWDPIfile, cmdArray32, sizeof(cmdArray32) );             //in bytes. each commandsDone has 4 bytes
+    read( SWDPIfile, replyArray32, sizeof(cmdArray32) );
+
+    close( SWDPIfile );
+
+    printf( "IDCODE 0x%08x (0x%08x)\n", replyArray32[1], replyArray32[0] );
+    printf( "\t--> version: %d\n", ((replyArray32[1] & (15 << 12)) >> 12) );
+
+    return ((replyArray32[1] & (15 << 12)) >> 12);
 }
 
 
@@ -56,7 +68,7 @@ void read_ids( int file )       //reads some registers
     //uint32_t cmdArray[6*2] =
 
 
-    int32_t myReadBuffer[7*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
+    int32_t myReadBuffer[7*2] = {0,};   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
     int reply = 0;
 
     reply = write( file, cmdArray, 7*8 );                //write list of commands
@@ -65,7 +77,7 @@ void read_ids( int file )       //reads some registers
     reply = read( file, &myReadBuffer, 7*8);   //read 4 bytes -->> always reads IDCODE
     //printf( "read response: %d\n", reply );
 
-    printf( "IDCODE: 0x%08x (0x%08x)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
+    //printf( "IDCODE: 0x%08x (0x%08x)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
     printf( "MEM-AP info: \n");
     printf( "DEBUG BASE: 0x%08x (0x%08x)\n", myReadBuffer[2*5 + 1], myReadBuffer[2*5]);
     printf( "AP-IDR: 0x%08x (0x%08x)\n", myReadBuffer[2*6 + 1], myReadBuffer[2*6]);     //AP ID
@@ -79,18 +91,19 @@ void read_mcu_id( int file )
                           DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
                           DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x54,       //bit 26, 28 and 30  --> power up system & debug. seems to work    & seems to be necessary to read out MEMAP_READ3_CMD etc in the NEXT RUN
                           DP_CTRLSTAT_R_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // 0x50 or 0x54
-                          DP_SELECT_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // [7...4]   APBANKSEL  --> selects active 4 word register bank on current AP...
+                          DP_SELECT_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // [31...24] APSEL selects AP; [7...4] APBANKSEL selects active 4 word register bank on current AP...
 //is his always correct:
                           MEMAP_WRITE0_CMD,     0x00, 0x00, 0x00,   0x12,  0x00,   0x00,    0x22,       //cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
                           // write address:
                           MEMAP_WRITE1_CMD,     0x00, 0x00, 0x00,   0x00,  0x58,   0x01,    0x40,       // --> addr 0x40015800 is address of MCU device ID (maybe)
+                          //MEMAP_WRITE1_CMD,     0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x08,
 // preivous seems to fail...
                           MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
 // here we get a wait cmd
-                          DP_READBUF_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
+                          MEMAP_READ3_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
                       };
 
-      int32_t myReadBuffer[8*2];   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
+      int32_t myReadBuffer[8*2] = {0, };   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
       int reply = 0;
 
       reply = write( file, cmdArray, 8*8 );                //write list of commands
@@ -347,6 +360,8 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
 }
 
 
+
+
 int main( int argc, char *argv[] )
 {
     //printf("param1: %s\n", argv[1]);
@@ -381,12 +396,14 @@ int main( int argc, char *argv[] )
         }
     }
 
+    findVersion();
+
     //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
     if( strcmp(argstr1, "") == 0 )
     {
         int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
-        //read_ids( cake );
+        read_ids( cake );
         read_mcu_id( cake );
     }
     else if( strcmp(argv[1], "-fileprint") == 0 ) // -filedump filename #ofWords

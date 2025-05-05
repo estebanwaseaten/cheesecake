@@ -34,6 +34,8 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 	uint8_t *ack = &(((uint8_t*)cmd)[3]);
 	uint32_t *data = &(((uint32_t*)cmd)[1]);
 
+	uint32_t abortcounter = 0;
+
 	//1. connection sequence
 	//SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
 
@@ -43,28 +45,45 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 		if( lowLevelCmd & 0x4 )	//0 for write, 1 for read
 		{
 			//read
-			pr_info("read operation!\n");
-			SWDGPIOBBD_command( lowLevelCmd );
-			SWDGPIOBBD_cycleTurnaround2Read();
-			SWDGPIOBBD_receiveAck( ack );
+			*ack = 2;
+			while( (*ack == 2) && (abortcounter < 100))
+			{
+				SWDGPIOBBD_command( lowLevelCmd );
+				SWDGPIOBBD_cycleTurnaround2Read();
+				SWDGPIOBBD_receiveAck( ack );			//we have to check ack here
+				abortcounter++;
+			}
 			SWDGPIOBBD_receiveData( data );
 			SWDGPIOBBD_cycleTurnaround2Write();
+
+			pr_info("read operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
 		}
 		else
 		{
 			//write
-			pr_info("write operation!\n");
-			SWDGPIOBBD_command( lowLevelCmd );
-			SWDGPIOBBD_cycleTurnaround2Read();
-			SWDGPIOBBD_receiveAck( ack );
+			*ack = 2;
+			while( (*ack == 2) && (abortcounter < 100) )
+			{
+				SWDGPIOBBD_command( lowLevelCmd );
+				SWDGPIOBBD_cycleTurnaround2Read();
+				SWDGPIOBBD_receiveAck( ack );
+				abortcounter++;
+			}
 			SWDGPIOBBD_cycleTurnaround2Write();
 			SWDGPIOBBD_sendData( data );	//write data!!!
+
+			pr_info("write operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
 		}
 		//pr_info("SWDGPIOBBD_transfer() after cmd: %x data %x", (uint32_t)lowLevelCmd, *data );
 	}
 	else
 	{
 		return -100;	//whatever
+	}
+
+	if( *ack > 1 )
+	{
+		return -11;		//probably should make some error codes...
 	}
 	return 0;
 }
