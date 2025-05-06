@@ -359,11 +359,9 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
     close( SWDPIfile );
 }
 
-
-
-
 int main( int argc, char *argv[] )
 {
+
     //printf("param1: %s\n", argv[1]);
     //printf("param2: %s\n", argv[2]);
     //printf("param3: %s\n", argv[3]);

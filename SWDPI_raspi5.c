@@ -58,13 +58,14 @@ int initRaspi5( void )
     gpio5Mem = (uint32_t*)of_iomap( gpio_node, 0 );  //maps whole node __>
     printk( "gpio memory mapped 0x%x \n", *gpio5Mem );
 
-    configPinPullRaspi5( clockPin, GPIO_PULL_NONE );       //always leave it at pull down??
-    configPinPullRaspi5( dataPin, GPIO_PULL_NONE );
+    configPinPullRaspi5( clockPin, GPIO_PULL_DOWN );       //always leave it at pull down??
+    configPinPullRaspi5( dataPin, GPIO_PULL_DOWN );
 
     setPinOutputRaspi5( clockPin );
     setPinOutputRaspi5( dataPin );
 
-    setPinRaspi5( clockPin );   //clock idles high
+    //setPinRaspi5( clockPin );   //clock idles high ???
+    unsetPinRaspi5( clockPin );
     unsetPinRaspi5( dataPin );
 
     return 0;

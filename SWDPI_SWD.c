@@ -237,50 +237,58 @@ int SWDGPIOBBD_sendData( uint32_t *data )
 //https://developer.arm.com/documentation/dui0499/d/ARM-DSTREAM-Target-Interface-Connections/SWD-timing-requirements
 uint8_t SWDGPIOBBD_cycleRead(void)
 {
-   //set data pin
-   //SWDPI_gpio_interface.unsetPin( dataPin );	//just in case - should be unset anyways
-   //unsset clock pin
-   SWDPI_gpio_interface.unsetPin( clockPin );
-
-   //read data pin
+   /*SWDPI_gpio_interface.unsetPin( clockPin );
    uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
 
    udelay(half_period_us);
-
-   //set clock pin
    SWDPI_gpio_interface.setPin( clockPin );
-   //udelay(1);	//to be safe???	now its too late
-   //value += SWDPI_gpio_interface.readPin( dataPin );
-   //read pin
+   udelay(half_period_us);*/
 
 
-   udelay(half_period_us);
+	//SWDPI_gpio_interface.setPin( clockPin );
 
-   return (value != 0);
+	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );	//or just before ...
+
+	udelay(half_period_us);
+	SWDPI_gpio_interface.setPin( clockPin );
+
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.unsetPin( clockPin );
+
+   	return (value != 0);
 }
 
 void SWDGPIOBBD_cycleWrite( uint8_t bit )
 {
-   //1. set data pin
-   if( bit == 0 )
+   /*if( bit == 0 )
        SWDPI_gpio_interface.unsetPin( dataPin );
    else
        SWDPI_gpio_interface.setPin( dataPin );
-
-   //1. unset clock pin
    SWDPI_gpio_interface.unsetPin( clockPin );
-   //max delay here Tos = 5ns
 
    udelay(half_period_us);
-
-   //set clock pin
    SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);
+   udelay(half_period_us);*/
+
+	if( bit == 0 )
+   		SWDPI_gpio_interface.unsetPin( dataPin );
+   	else
+   		SWDPI_gpio_interface.setPin( dataPin );
+
+	//SWDPI_gpio_interface.setPin( clockPin );
+
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.unsetPin( clockPin );
 }
 
 void SWDGPIOBBD_cycleTurnaround2Read(void)
 {
-   //unset clock pin
+   /*//unset clock pin
    SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
    SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
    SWDPI_gpio_interface.setPinInput( dataPin );										//is this working??
@@ -293,13 +301,24 @@ void SWDGPIOBBD_cycleTurnaround2Read(void)
 
    //set clock pin
    SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);
+   udelay(half_period_us);*/
+
+	SWDPI_gpio_interface.unsetPin( dataPin );
+	SWDPI_gpio_interface.setPinInput( dataPin );
+    //SWDPI_gpio_interface.setPin( clockPin );
+
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.unsetPin( clockPin );
 
 }
 
 void SWDGPIOBBD_cycleTurnaround2Write(void)
 {
-   //unset clock pin
+   /*//unset clock pin
    SWDPI_gpio_interface.unsetPin( dataPin );
    SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
    SWDPI_gpio_interface.setPinOutput( dataPin );
@@ -309,5 +328,16 @@ void SWDGPIOBBD_cycleTurnaround2Write(void)
 
    //set clock pin
    SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);
+   udelay(half_period_us);*/
+	SWDPI_gpio_interface.unsetPin( dataPin );
+	SWDPI_gpio_interface.setPinOutput( dataPin );
+	//SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
+
+	SWDPI_gpio_interface.unsetPin( clockPin );
+
+
 }
