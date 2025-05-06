@@ -45,7 +45,7 @@ void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
 
 int findVersion( void )
 {
-    uint32_t cmdArray32[2] = {  DP_IDCODE_CMD, 0};
+    uint32_t cmdArray32[2] = { DP_IDCODE_CMD, 0};
     uint32_t replyArray32[2] = { 0, 0 };
 
 
@@ -56,7 +56,7 @@ int findVersion( void )
 
     close( SWDPIfile );
 
-    printf( "IDCODE 0x%08x (0x%08x)\n", replyArray32[1], replyArray32[0] );
+    printf( "Debug Port IDCODE: 0x%08x (0x%08x)\n", replyArray32[1], replyArray32[0] );
     printf( "\t--> version: %d\n", ((replyArray32[1] & (15 << 12)) >> 12) );
 
     return ((replyArray32[1] & (15 << 12)) >> 12);
@@ -113,7 +113,7 @@ void read_mcu_id( int file )
 // preivous seems to fail...
                           MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
 // here we get a wait cmd
-                          MEMAP_READ3_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
+                          DP_READBUF_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
                       };
 
       int32_t myReadBuffer[8*2] = {0, };   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
