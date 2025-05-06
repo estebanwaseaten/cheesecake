@@ -52,6 +52,9 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 				SWDGPIOBBD_cycleTurnaround2Read();
 				SWDGPIOBBD_receiveAck( ack );			//we have to check ack here
 				abortcounter++;
+				if( *ack == 2 )
+					SWDGPIOBBD_cycleTurnaround2Write();
+				//should have a turnaround write here?? or in the very beginning
 			}
 			SWDGPIOBBD_receiveData( data );
 			SWDGPIOBBD_cycleTurnaround2Write();
@@ -68,6 +71,9 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 				SWDGPIOBBD_cycleTurnaround2Read();
 				SWDGPIOBBD_receiveAck( ack );
 				abortcounter++;
+				if( *ack == 2 )
+				 	SWDGPIOBBD_cycleTurnaround2Write();
+				//should have a turnaround write here?? or in the very beginning
 			}
 			SWDGPIOBBD_cycleTurnaround2Write();
 			SWDGPIOBBD_sendData( data );	//write data!!!
@@ -246,10 +252,11 @@ uint8_t SWDGPIOBBD_cycleRead(void)
 
 
 	//SWDPI_gpio_interface.setPin( clockPin );
+	udelay(half_period_us);
 
+	//programmer reads just before rising edge
 	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );	//or just before ...
 
-	udelay(half_period_us);
 	SWDPI_gpio_interface.setPin( clockPin );
 
 	udelay(half_period_us);

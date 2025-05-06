@@ -51,13 +51,13 @@ int initRaspi4( void )
     gpio4Mem = (uint32_t*)of_iomap( gpio_node, 0 );
     printk( "memory mapped %x", *gpio4Mem );
 
-    configPinPullRaspi4( clockPin, GPIO_PULL_NONE );       //what to do here?
-    configPinPullRaspi4( dataPin, GPIO_PULL_NONE );
+    configPinPullRaspi4( clockPin, GPIO_PULL_DOWN );       //this worked on the pi5, maybe we have to adjust when we read the data (at the very beginning of the clock or in the center...)
+    configPinPullRaspi4( dataPin, GPIO_PULL_DOWN );
 
     setPinOutputRaspi4( clockPin );
     setPinOutputRaspi4( dataPin );
 
-    setPinRaspi4( clockPin );
+    unsetPinRaspi4( clockPin );         //we idle low now...
     unsetPinRaspi4( dataPin );
 
     return 0;

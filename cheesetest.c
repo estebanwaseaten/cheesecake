@@ -4,6 +4,7 @@
 #include <unistd.h>     //close()
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include "SWDPI_base.h"
 #include "registers.h"
@@ -28,6 +29,18 @@ uint64_t whole_cmd( uint8_t cmd, uint32_t data )
 {
     uint64_t result = data | (((uint64_t)cmd) << 56);
     return result;
+}
+
+void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
+{
+	*baseOffset = ( *baseAddr % 0x80 );
+	*baseAddr -= *baseOffset;
+	*wordCount += *baseOffset / 4;
+
+	if( *baseOffset != 0 )
+    {
+        printf( "automatically shifted base address by -0x%08x\n", *baseOffset);
+    }
 }
 
 int findVersion( void )
@@ -187,6 +200,113 @@ apparently this wraps... somehow...
 
 do we have to somehow reset the auto increment... ??? so strange!
 */
+
+
+//base offset needs to be aligned to 128 (0x80) bytes (corresponds to 32 words which is the smallest mutliple that the device driver will transfer (when subtracting the initialisiation data))
+// this ensures, that we stay within a region where the automatic address increase works
+int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer, uint32_t *debugBuffer )      //*baseOffset = ( *baseAddr % 0x80 );
+{
+    if ( (baseAddr % 0x80) != 0 )
+    {
+        printf( "stmFetchAligned() error: baseAddr not aligned.\n");
+        return -11;
+    }
+
+    uint32_t *cmdArray32 = calloc( 39, 2*sizeof(uint32_t) );    //allocate command buffer for 32 + 7 commands: 7 for initialisiation and 32 for data
+    uint32_t *replyArray32 = calloc( 39, 2*sizeof(uint32_t) );
+
+    uint32_t addressCounter = 0;
+
+    uint32_t wordsTransferred = 0;
+    uint32_t commandWordsTransferred = 14;      //double of words
+    uint32_t wordsStored = 0;
+
+    int reply = 0;
+
+    int SWDPIfile =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+
+    while( wordsTransferred < wordCount )      //loop until all words have been read!
+    {
+        //initialisiation every 39 (32 data) transfers --> we are certainly aligned with memory areas in which the auto address increase works
+        printf( "bunch:\n" );
+        cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
+        cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
+        cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
+        cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;                                   // selects AP 0, BANK 0
+        cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;                       // sets access (auto increment etc)
+        cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter * 4;  // set correct starting address
+        cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;                               //does not get ACK??        //initial read (no reply expected)
+        cmdArray32[14] = DP_READBUF_CMD; cmdArray32[15] = 0;
+        commandWordsTransferred = 16;
+        wordsTransferred++; //first word has been transferred already here
+        //addressCounter gets me!! WE HAVE TO READ BUFFER, otherwise the address is automatically increased
+
+
+        //fill in remaining read commands:
+        while( (wordsTransferred < wordCount) && (commandWordsTransferred < 78) )   //aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
+        {
+            cmdArray32[commandWordsTransferred] = MEMAP_READ3_CMD;
+            commandWordsTransferred++;
+            cmdArray32[commandWordsTransferred] = 0;       //we read
+            commandWordsTransferred++;
+            wordsTransferred++;
+        }
+
+        //send and receive
+        reply = write( SWDPIfile, cmdArray32,   commandWordsTransferred*4 );             //in bytes. each commandsDone has 4 bytes
+        reply = read( SWDPIfile,  replyArray32, commandWordsTransferred*4 );
+
+        printf("debug: commandWordsTransferred: %d\n", commandWordsTransferred );
+        //extract the actual data only:
+        for( int i = 14; i < commandWordsTransferred; i+=2 )    //increase by two
+        {
+            //printf("debug: i: %d\n", i );
+            returnBuffer[wordsStored] = replyArray32[i+1];
+
+            if( debugBuffer != NULL )
+            {
+                debugBuffer[wordsStored] = replyArray32[i];
+            }
+
+            wordsStored++;
+            addressCounter++;
+        }
+    }
+
+    free( cmdArray32 );
+    free( replyArray32 );
+
+    close( SWDPIfile );
+}
+
+void stmPrint2( int baseAddr, int wordCount )
+{
+    printf( "stmPrint2: base: 0x%x, words: %d\n", baseAddr, wordCount );
+
+    uint32_t *dataArray = calloc( wordCount, sizeof(uint32_t) );      //64bits * 64 transfers
+    uint32_t *debugArray = calloc( wordCount, sizeof(uint32_t) );
+
+    uint32_t reply = stmReadAligned( baseAddr, wordCount, dataArray, debugArray );
+
+    for (int i = 0; i < wordCount; i++)
+    {
+        if( ( i % 4 ) == 0 )
+        {
+            printf( "0x%08x: ", i*4 + baseAddr );
+        }
+
+        printf( "%08x (%08x) ", dataArray[i], debugArray[i] );          //display ACK
+        //printf( "%08x ", dataArray[i] );                                   //do not display ACK
+
+        if( ( ( i + 1 ) % 4) == 0 )
+        {
+            printf( "\n" );
+        }
+    }
+
+}
+
+
 void stmprint( int baseAddr, int wordCount )        //wordCount is the number of words that are supposed to be displayed
 {
     printf( "stmdump: base: 0x%x, words: %d\n", baseAddr, wordCount );
@@ -196,24 +316,18 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
     //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be potentially read from the MCU in one running
     //BUT auto address increment only works in bunches of 1024 bits --> only extract 32 words per request --> we align withe the 1024 boundary automatically --
     // 7+ 32 = 39
+
     if( (baseAddr % 4) != 0 )
     {
         printf( "base Address has to by word aligned!\n");
         return;
     }
 
-    //base Addr must be multiple of 0x80, otherwise the auto addr increase fails
-    uint32_t baseOffset = (baseAddr % 0x80);
-    baseAddr -= baseOffset;     //now it is aligned
-    wordCount += baseOffset/4;  //add words otherwise we wont reach...
-    if( baseOffset != 0 )
-    {
-        printf( "automatically shifted base address by -0x%08x\n", baseOffset);
-    }
+    uint32_t baseOffset = 0;
+    align2mem( &baseAddr, &wordCount, &baseOffset );
 
-
-    uint32_t *cmdArray32 = malloc( 39*2*sizeof(uint32_t) );      //64bits * 64 transfers
-    uint32_t *replyArray32 = malloc( 39*2*sizeof(uint32_t) );
+    uint32_t *cmdArray32 = calloc( 39, 2*sizeof(uint32_t) );      //64bits * 64 transfers
+    uint32_t *replyArray32 = calloc( 39, 2*sizeof(uint32_t) );
     uint32_t addressCounter = 0;
     uint32_t wordsDone = 0;
     uint32_t commandsDone;
@@ -228,7 +342,7 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
         cmdArray32[6] = DP_SELECT_CMD; cmdArray32[7] = 0;
         cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
         cmdArray32[10] = MEMAP_WRITE1_CMD; cmdArray32[11] = baseAddr + addressCounter*4;                //this seems to be ok
-        cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;   //initial read (no reply expected)
+        cmdArray32[12] = MEMAP_READ3_CMD; cmdArray32[13] = 0;                                           //initial read (no reply expected)
         commandsDone = 14;
 
         //fill in remaining read commands:
@@ -253,7 +367,8 @@ void stmprint( int baseAddr, int wordCount )        //wordCount is the number of
                 {
                     printf( "0x%08x: ", addressCounter*4 + baseAddr );
                 }
-                printf( "%08x(%08x) ", replyArray32[i+1], replyArray32[i] );      //should be +1
+                printf( "%08x(%08x) ", replyArray32[i+1], replyArray32[i] );          //display ACK
+                //printf( "%08x ", replyArray32[i+1] );                                   //do not display ACK
 
                 if( ( ( addressCounter + 1 ) % 4) == 0 )
                 {
@@ -299,17 +414,11 @@ void stmdump( int baseAddr, int wordCount )        //wordCount is the number of 
         return;
     }
 
-    //base Addr must be multiple of 0x80, otherwise the auto addr increase fails
-    uint32_t baseOffset = (baseAddr % 0x80);
-    baseAddr -= baseOffset;     //now it is aligned
-    wordCount += baseOffset/4;  //add words otherwise we wont reach...
-    if( baseOffset != 0 )
-    {
-        printf( "automatically shifted base address by -0x%08x\n", baseOffset);
-    }
+    uint32_t baseOffset = 0;
+    align2mem( &baseAddr, &wordCount, &baseOffset );        //aligns memory to correct boundaries
 
-    uint32_t *cmdArray32 = malloc( 2*64*sizeof(uint32_t) );      //64bits * 64
-    uint32_t *replyArray32 = malloc( 2*64*sizeof(uint32_t) );
+    uint32_t *cmdArray32 = calloc( 39, 2*sizeof(uint32_t) );      //64bits * 64
+    uint32_t *replyArray32 = calloc( 39, 2*sizeof(uint32_t) );
     uint32_t addressCounter = 0;
     uint32_t wordsDone = 0;
     uint32_t commandsDone;
@@ -412,7 +521,8 @@ int main( int argc, char *argv[] )
     else if ( strcmp(argv[1], "-stmprint") == 0 ) // -stmdump base-addr #ofWords
     {
         printf( "-stmprint\n");
-        stmprint( param2, param3 );
+        //stmprint( param2, param3 );
+        stmPrint2( param2, param3 );
     }
     else if ( strcmp(argv[1], "-stmdump") == 0 ) // -stmdump base-addr #ofWords
     {
