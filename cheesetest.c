@@ -14,26 +14,90 @@
 // xxd -
 // vbindiff
 
+struct APinfo
+{
+    uint8_t     type;
+    uint8_t     variant;
+    uint8_t     res0;       //reserved
+    uint8_t     class;
+    uint16_t    designer;
+    uint8_t     revision;
+} myAPinfo;
 
 
 
 int findVersion( void )
 {
-    uint32_t cmdArray32[2] = { DP_IDCODE_CMD, 0};
-    uint32_t replyArray32[2] = { 0, 0 };
+    uint32_t cmdArray32[2*8] = {    DP_IDCODE_CMD, 0,
+                                    DP_CTRLSTAT_W_CMD, 0x50000000,
+                                    DP_CTRLSTAT_R_CMD, 0x0,
+                                    DP_SELECT_CMD, 0xF0,
+                                    MEMAP_READ1_CMD, 0x0,
+                                    MEMAP_READ2_CMD, 0x0,
+                                    MEMAP_READ3_CMD, 0x0,
+                                    DP_READBUF_CMD, 0x0,
+                                };
 
+    uint32_t replyArray32[2*8] = { 0, };
 
     int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
 
     write( SWDPIfile, cmdArray32, sizeof(cmdArray32) );             //in bytes. each commandsDone has 4 bytes
     read( SWDPIfile, replyArray32, sizeof(cmdArray32) );
 
+
+
+    printf( "DP IDR (IDCODE): 0x%08x\n", replyArray32[0*2+1] );
+    printf( "\t--> version: %d\n", ((replyArray32[0*2+1] & (15 << 12)) >> 12) );
+
+    uint32_t apIDR = replyArray32[7*2+1];
+    uint32_t apBASE = replyArray32[6*2+1];
+    uint32_t apCFG = replyArray32[5*2+1];
+
+    myAPinfo.type = apIDR & 0xF;
+    myAPinfo.variant = ((apIDR & 0xF0) >> 4);
+    myAPinfo.res0 = ((apIDR & 0x1F00) >> 8);
+    myAPinfo.class = ((apIDR & 0x1E000) >> 13);
+    myAPinfo.designer = ((apIDR & 0xFFE0000) >> 17);
+    myAPinfo.revision = ((apIDR & 0xF0000000) >> 28);
+    printf( "AP IDR: 0x%08x\n", replyArray32[6*2+1] );              //zero --> no AP present
+    printf( "\t type %d\n", myAPinfo.type);
+    printf( "\t variant %d\n", myAPinfo.variant);
+    printf( "\t class %d\n", myAPinfo.class);
+    printf( "\t designer 0x%x\n", myAPinfo.designer);
+    printf( "\t revision %d\n", myAPinfo.revision);
+
+    printf( "AP BASE: 0x%08x\n", apBASE );
+
+    printf( "AP CFG: 0x%08x\n", apCFG );
+
+    //look at CIDR0 - CIDR3 located at apBASE + 0xFF0 + n*4
+
+    uint32_t cmdArray32B[2*11] = {    DP_IDCODE_CMD, 0,
+                                     DP_CTRLSTAT_W_CMD, 0x50000000,
+                                     DP_CTRLSTAT_R_CMD, 0x0,
+                                     DP_SELECT_CMD, 0x00,
+                                     MEMAP_WRITE0_CMD, 0x22000012,          //settings (auto incr)
+                                     MEMAP_WRITE1_CMD, apBASE + 0xFF0,      //set address
+                                     MEMAP_READ3_CMD, 0x0,
+                                     MEMAP_READ3_CMD, 0x0,
+                                     MEMAP_READ3_CMD, 0x0,
+                                     MEMAP_READ3_CMD, 0x0,
+                                     DP_READBUF_CMD, 0x0,
+                                };
+    uint32_t replyArray32B[2*11] = { 0, };
+    write( SWDPIfile, cmdArray32B, sizeof(cmdArray32) );             //in bytes. each commandsDone has 4 bytes
+    read( SWDPIfile, replyArray32B, sizeof(cmdArray32) );
+
+    printf( "AP CIDR0: 0x%08x\n", replyArray32B[2*7+1] );           //For more information about CIDR0-CIDR3, see the Arm® CoreSight™ Architecture Specification
+    printf( "AP CIDR1: 0x%08x\n", replyArray32B[2*8+1] );
+    printf( "AP CIDR2: 0x%08x\n", replyArray32B[2*9+1] );
+    printf( "AP CIDR3: 0x%08x\n", replyArray32B[2*10+1] );
+    printf( "For more information about CIDR0-CIDR3, see the Arm CoreSight Architecture Specification\n" );
+
     close( SWDPIfile );
 
-    printf( "Debug Port IDCODE: 0x%08x (0x%08x)\n", replyArray32[1], replyArray32[0] );
-    printf( "\t--> version: %d\n", ((replyArray32[1] & (15 << 12)) >> 12) );
-
-    return ((replyArray32[1] & (15 << 12)) >> 12);
+    return ((replyArray32[0+1] & (15 << 12)) >> 12);
 }
 
 
@@ -50,10 +114,6 @@ void read_ids( int file )       //reads some registers
                           MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // read MEM-AP
                           DP_READBUF_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //actually reads the AP ID
                       };
-
-
-    //uint32_t cmdArray[6*2] =
-
 
     int32_t myReadBuffer[7*2] = {0,};   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
     int reply = 0;
@@ -204,7 +264,7 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
     while( wordsTransferred < wordCount )      //loop until all words have been read!
     {
         //initialisiation every 39 (32 data) transfers --> we are certainly aligned with memory areas in which the auto address increase works
-        printf( "bunch:\n" );
+        //printf( "bunch:\n" );
         cmdArray32[0] = DP_IDCODE_CMD; cmdArray32[1] = 0;
         cmdArray32[2] = DP_CTRLSTAT_W_CMD; cmdArray32[3] = 0x50000000;
         cmdArray32[4] = DP_CTRLSTAT_R_CMD; cmdArray32[5] = 0;
@@ -231,7 +291,7 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
         reply = write( SWDPIfile, cmdArray32,   commandWordsTransferred*4 );             //in bytes. each commandsDone has 4 bytes
         reply = read( SWDPIfile,  replyArray32, commandWordsTransferred*4 );
 
-        printf("debug: commandWordsTransferred: %d\n", commandWordsTransferred );
+        //printf("debug: commandWordsTransferred: %d\n", commandWordsTransferred );
         //extract the actual data only:
         for( int i = 14; i < commandWordsTransferred; i+=2 )    //increase by two
         {
@@ -250,6 +310,8 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
     free( cmdArray32 );
     free( replyArray32 );
     close( SWDPIfile );
+
+    return 0;
 }
 
 void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
@@ -288,7 +350,7 @@ void stmPrint( uint32_t baseAddr, uint32_t wordCount )
     {
         if( ( i % 4 ) == 0 )
         {
-            printf( "0x%08x: ", i*4 + baseAddr );
+            printf( "0x%08x: ", i*4 + newBaseAddr );
         }
         printf( "%08x (%08x) ", dataArray[i], debugArray[i] );          //display ACK
         //printf( "%08x ", dataArray[i] );                                   //do not display ACK
@@ -304,9 +366,6 @@ void stmPrint( uint32_t baseAddr, uint32_t wordCount )
 void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the number of words that are supposed to be displayed
 {
     printf( "stmDump: base: 0x%x, words: %d\n", baseAddr, wordCount );
-
-    // file for dumping binary
-    int SWDPIfile =  open("/dev/SWDPI", O_RDWR | O_SYNC);
 
     //need 6 commands for setup + wordcount reads + 1 (because read is delayed) = 7 + wordcount reads
     //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be read from the MCU
@@ -342,14 +401,13 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
 
     for( int i = wordOffset; i < newWordCount; i++ )
     {
-        printf( "%08x (%08x) ", dataArray[i], debugArray[i] );
+        //printf( "%08x (%08x) ", dataArray[i], debugArray[i] );
         fwrite( &dataArray[i], sizeof(dataArray[i]), 1, file);
     }
 
     free( dataArray );
     free( debugArray );
     fclose( file );
-    close( SWDPIfile );
 }
 
 int main( int argc, char *argv[] )
@@ -387,15 +445,16 @@ int main( int argc, char *argv[] )
         }
     }
 
+    // first collect some information
     findVersion();
 
     //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
     if( strcmp(argstr1, "") == 0 )
     {
-        int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
-        read_ids( cake );
-        read_mcu_id( cake );
+        //int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+        //read_ids( cake );
+        //read_mcu_id( cake );
     }
     else if( strcmp(argv[1], "-fileprint") == 0 ) // -filedump filename #ofWords
     {
