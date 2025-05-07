@@ -169,9 +169,9 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 //need to write exactly 64bits (8bytes) or multiples...
 static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t *off)
 {
-	pr_info("Driver Write Function Called...!!!\n");
+	pr_info("\n *** Driver Write Function Called...!!!\n");
 	pr_info("len: %d\n", len);
-	pr_info("off: %d\n", off);
+	pr_info("off: %d\n", *off);
 	if( SWDGPIOBBD_readwritelock == 1 )
 	{
 		pr_warn("write fail - currently in read action \n");
@@ -195,6 +195,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	//3. add to main buffer
 	//4. execute... only reply buffer is empty, we receive new commands...
 	int count = len / 8;
+	int realCount = 0;
 	uint64_t tempBuffer = 0;
 	//uint32_t *tempBuffer32 = (uint32_t*)&tempBuffer;
 
@@ -212,7 +213,14 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		if( tempBuffer == 0 )
 		{
 			//reset!
-			return -1;
+			pr_warn("tempBuffer zero error.\n");
+			//return -1;
+		}
+		else
+		{
+			//add to buffer:
+			sendBuffer[i] = tempBuffer;
+			realCount++;
 		}
 
 		/* at least check if Parity is correct?
@@ -223,11 +231,9 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 			return -1;
 		}
 		*/
-
-		//add to buffer:
-		sendBuffer[i] = tempBuffer;
 	}
 
+	count = realCount;
 
 	pr_info("write %d commands \n", count );
 
@@ -257,8 +263,11 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 //needs to return number of bytes or 0 for EOF
 static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, loff_t * off)		//only returns ack and IDCODE value
 {
-	pr_info("Driver Read Function Called...!!!\n");
+	pr_info("\n *** Driver Read Function Called...!!!\n");
 	// e.g. copy_to_user(buf, kernel_buffer, mem_size);
+	pr_info("receiveBuffer_level: %d\n", receiveBuffer_level );
+	pr_info("receiveBuffer_levelRead: %d\n", receiveBuffer_levelRead );
+	pr_info("len: %d\n", len );
 
 	SWDGPIOBBD_readwritelock = 1;
 
@@ -269,6 +278,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	}
 
 	int count = len / 8;
+	pr_info("count: %d\n", count );
 
 	if( receiveBuffer_level == 0 )
 	{
@@ -288,7 +298,8 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	if( count > (receiveBuffer_level - receiveBuffer_levelRead ))		//want to read more than is available
 	{
 		pr_warn("trying to read more than available \n");
-		return -1;
+		count = (receiveBuffer_level - receiveBuffer_levelRead );
+		//return -1;
 	}
 
 

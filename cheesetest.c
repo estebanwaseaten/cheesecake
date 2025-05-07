@@ -14,6 +14,8 @@
 // xxd -
 // vbindiff
 
+#define MAX_COMS 64
+
 struct APinfo
 {
     uint8_t     type;
@@ -24,35 +26,120 @@ struct APinfo
     uint8_t     revision;
 } myAPinfo;
 
+typedef struct comArray
+{
+    uint32_t *cmdArray32;
+    uint32_t *replyArray32;
+    uint8_t  initDone;
+    uint32_t filling;
+} comArray;
 
+comArray mainComArray;
+
+void comArrayInit( comArray *myComArray )
+{
+    myComArray->cmdArray32 = calloc( MAX_COMS, 8 );         //8 bytes each command
+    myComArray->replyArray32 = calloc( MAX_COMS, 8 );
+    myComArray->initDone = 0xF0;
+    myComArray->filling = 0;
+}
+
+int comArrayClear( comArray *myComArray )
+{
+    if( (myComArray == NULL) || (myComArray->initDone == 0) )
+    {
+        printf( "comArrayClear() NULL or not inited\n" );
+        return -1;
+    }
+    myComArray->cmdArray32 = memset( myComArray->cmdArray32, 0x0, MAX_COMS*8 );
+    myComArray->replyArray32 = memset( myComArray->cmdArray32, 0x0, MAX_COMS*8 );
+    myComArray->initDone = 0xF0;
+    myComArray->filling = 0;
+
+    return 0;
+}
+
+int comArrayAdd( comArray *myComArray, uint32_t cmd, uint32_t val )
+{
+    if( (myComArray == NULL) || (myComArray->initDone == 0) )
+    {
+        printf( "comArrayAdd() NULL or not inited\n" );
+        return -1;
+    }
+    if ( myComArray->filling >= MAX_COMS )
+    {
+        printf( "comArrayAdd() full\n" );
+        return -2;
+    }
+    myComArray->cmdArray32[myComArray->filling*2] = cmd;
+    myComArray->cmdArray32[myComArray->filling*2 + 1] = val;
+    myComArray->filling++;
+
+    return myComArray->filling;
+}
+
+uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index starts at 0
+{
+    if( (myComArray == NULL) || (myComArray->initDone == 0) )
+    {
+        printf( "comArrayRead() NULL or not inited\n" );
+        return -1;
+    }
+    if ( index >= myComArray->filling )
+    {
+        printf( "comArrayRead() index not available\n" );
+        return -2;
+    }
+
+    return myComArray->replyArray32[index*2 + 1];
+}
+
+void comArrayTransfer( comArray *myComArray )
+{
+    int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
+    write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes
+    read( SWDPIfile, myComArray->replyArray32,  myComArray->filling*2*4 );
+    close( SWDPIfile );
+}
+
+// IHI0031G_debug_interface_v5_2_architecture_specification.pdf
+// IHI0074E_debug_interface_v6_0_architecture_specification.pdf
+// IHI0029F_coresight_v3_0_architecture_specification.pdf
+
+// DDI0484C_cortex_m0p_r0p1_trm.pdf
+// DDI0419E_armv6m_arm.pdf
+
+// DDI0439B_cortex_m4_r0p0_trm.pdf
+// DDI0403E_e_armv7m_arm.pdf
+
+// DBGMCU_IDCODE at address 0xE0042000
 
 int findVersion( void )
 {
-    uint32_t cmdArray32[2*8] = {    DP_IDCODE_CMD, 0,
-                                    DP_CTRLSTAT_W_CMD, 0x50000000,
-                                    DP_CTRLSTAT_R_CMD, 0x0,
-                                    DP_SELECT_CMD, 0xF0,
-                                    MEMAP_READ1_CMD, 0x0,
-                                    MEMAP_READ2_CMD, 0x0,
-                                    MEMAP_READ3_CMD, 0x0,
-                                    DP_READBUF_CMD, 0x0,
-                                };
+    comArrayInit( &mainComArray );
 
-    uint32_t replyArray32[2*8] = { 0, };
+    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0xF0 );
 
-    int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
+    comArrayAdd( &mainComArray, MEMAP_READ0_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ1_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ2_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
 
-    write( SWDPIfile, cmdArray32, sizeof(cmdArray32) );             //in bytes. each commandsDone has 4 bytes
-    read( SWDPIfile, replyArray32, sizeof(cmdArray32) );
+    comArrayTransfer( &mainComArray );
 
+    uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
 
+    printf( "DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
+    printf( "\t--> version: %d\n", ((dpIDCODE & (15 << 12)) >> 12) );
 
-    printf( "DP IDR (IDCODE): 0x%08x\n", replyArray32[0*2+1] );
-    printf( "\t--> version: %d\n", ((replyArray32[0*2+1] & (15 << 12)) >> 12) );
-
-    uint32_t apIDR = replyArray32[7*2+1];
-    uint32_t apBASE = replyArray32[6*2+1];
-    uint32_t apCFG = replyArray32[5*2+1];
+    uint32_t apBASE2 = comArrayRead( &mainComArray, 5 );
+    uint32_t apCFG = comArrayRead( &mainComArray, 6 );
+    uint32_t apBASE = comArrayRead( &mainComArray, 7 ) & 0xFFFFFFFC;     //Bit[1] is always 1, and the other bits are set to the tie-off value on the static input port, rombaseaddrl[31:0]. Set bit[0] to 1 if there are debug components on this bus.
+    uint32_t apIDR = comArrayRead( &mainComArray, 8 );
 
     myAPinfo.type = apIDR & 0xF;
     myAPinfo.variant = ((apIDR & 0xF0) >> 4);
@@ -60,44 +147,191 @@ int findVersion( void )
     myAPinfo.class = ((apIDR & 0x1E000) >> 13);
     myAPinfo.designer = ((apIDR & 0xFFE0000) >> 17);
     myAPinfo.revision = ((apIDR & 0xF0000000) >> 28);
-    printf( "AP IDR: 0x%08x\n", replyArray32[6*2+1] );              //zero --> no AP present
+
+    printf( "AP IDR: 0x%08X\n", apIDR );              //zero --> no AP present
     printf( "\t type %d\n", myAPinfo.type);
     printf( "\t variant %d\n", myAPinfo.variant);
     printf( "\t class %d\n", myAPinfo.class);
     printf( "\t designer 0x%x\n", myAPinfo.designer);
     printf( "\t revision %d\n", myAPinfo.revision);
 
-    printf( "AP BASE: 0x%08x\n", apBASE );
-
-    printf( "AP CFG: 0x%08x\n", apCFG );
+    printf( "AP BASE: 0x%08X\n", apBASE );              //Bit[1] is always 1, and the other bits are set to the tie-off value on the static input port, rombaseaddrl[31:0]. Set bit[0] to 1 if there are debug components on this bus.
+    printf( "(AP BASE2: 0x%08X)\n", apBASE2 );
+    printf( "AP CFG: 0x%08X (little endian = 0; big endian = 1)\n", apCFG );
 
     //look at CIDR0 - CIDR3 located at apBASE + 0xFF0 + n*4
+    comArrayClear( &mainComArray );
 
-    uint32_t cmdArray32B[2*11] = {    DP_IDCODE_CMD, 0,
-                                     DP_CTRLSTAT_W_CMD, 0x50000000,
-                                     DP_CTRLSTAT_R_CMD, 0x0,
-                                     DP_SELECT_CMD, 0x00,
-                                     MEMAP_WRITE0_CMD, 0x22000012,          //settings (auto incr)
-                                     MEMAP_WRITE1_CMD, apBASE + 0xFF0,      //set address
-                                     MEMAP_READ3_CMD, 0x0,
-                                     MEMAP_READ3_CMD, 0x0,
-                                     MEMAP_READ3_CMD, 0x0,
-                                     MEMAP_READ3_CMD, 0x0,
-                                     DP_READBUF_CMD, 0x0,
-                                };
-    uint32_t replyArray32B[2*11] = { 0, };
-    write( SWDPIfile, cmdArray32B, sizeof(cmdArray32) );             //in bytes. each commandsDone has 4 bytes
-    read( SWDPIfile, replyArray32B, sizeof(cmdArray32) );
+    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
 
-    printf( "AP CIDR0: 0x%08x\n", replyArray32B[2*7+1] );           //For more information about CIDR0-CIDR3, see the Arm® CoreSight™ Architecture Specification
-    printf( "AP CIDR1: 0x%08x\n", replyArray32B[2*8+1] );
-    printf( "AP CIDR2: 0x%08x\n", replyArray32B[2*9+1] );
-    printf( "AP CIDR3: 0x%08x\n", replyArray32B[2*10+1] );
-    printf( "For more information about CIDR0-CIDR3, see the Arm CoreSight Architecture Specification\n" );
+    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE + 0x0FCC );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFCC              // ... memory type register
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD0 (PIDR4)      // ... memory type register (delayed access)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD4 (PIDR5)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD8 (PIDR6)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFDC (PIDR7)
 
-    close( SWDPIfile );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFE0 (PIDR0)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFE4 (PIDR1)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFE8 (PIDR2)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFEC (PIDR3)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF0 (CIDR0)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF4 (CIDR1)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF8 (CIDR2)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFFC (CIDR3)
 
-    return ((replyArray32[0+1] & (15 << 12)) >> 12);
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+
+    comArrayTransfer( &mainComArray );
+
+    // IHI0074E_debug_interface_v6_0_architecture_specification.pdf
+    uint32_t regMemType = comArrayRead( &mainComArray, 7 ) & 0xFF;
+
+    uint32_t regPIDR4 = comArrayRead( &mainComArray, 8 ) & 0xFF;
+    uint32_t regPIDR0 = comArrayRead( &mainComArray, 12 ) & 0xFF;
+    uint32_t regPIDR1 = comArrayRead( &mainComArray, 13 ) & 0xFF;
+    uint32_t regPIDR2 = comArrayRead( &mainComArray, 14 ) & 0xFF;
+    uint32_t regPIDR3 = comArrayRead( &mainComArray, 15 ) & 0xFF;
+
+    uint32_t regCIDR0 = comArrayRead( &mainComArray, 16 );      //must be 0x0D
+    uint32_t regCIDR1 = comArrayRead( &mainComArray, 17 );      //[7:4] dfeines class
+    uint32_t regCIDR2 = comArrayRead( &mainComArray, 18 );      //must be 0x05      error
+    uint32_t regCIDR3 = comArrayRead( &mainComArray, 19 );     //must be 0xB1      error
+
+    printf( "MEMTYPE: 0x%08X\n\n", regMemType );    // 0b1 if system memory is present on the bus (deprecated)
+
+    printf( "AP PIDR0: 0x%08X\n", regPIDR0 );
+    printf( "AP PIDR1: 0x%08X\n", regPIDR1 );
+    printf( "AP PIDR2: 0x%08X\n", regPIDR2 );
+    printf( "AP PIDR3: 0x%08X\n", regPIDR3 );
+    printf( "AP PIDR4: 0x%08X\n\n", regPIDR4 );
+
+    printf( "AP CIDR0: 0x%08X\n", regCIDR0 );           //For more information about CIDR0-CIDR3, see the Arm® CoreSight™ Architecture Specification
+    printf( "AP CIDR1: 0x%08X\n", regCIDR1 );
+    printf( "AP CIDR2: 0x%08X\n", regCIDR2 );
+    printf( "AP CIDR3: 0x%08X\n\n", regCIDR3 );
+
+    uint32_t componentClass = regCIDR1 >> 4;
+
+    // IHI0029F_coresight_v3_0_architecture_specification.pdf
+    uint32_t partNo = regPIDR0 | ((regPIDR1 & 0xF) << 8);
+
+    uint32_t JEP106id = ((regPIDR1 & 0xF0) >> 4) | ((regPIDR2 & 0x7) << 4);
+    uint32_t JEP106cont = regPIDR4 & 0xF;
+
+    printf( "AP component class: 0x%01X (0x1=ROM, 0x9=CoreSight, ... see CoreSight specs)\n", componentClass );
+    // class 0x1 ROM table: IHI0074E_debug_interface_v6_0_architecture_specification.pdf
+    printf( "JEP106 ID: 0x%X CONT: 0x%X\n", JEP106id, JEP106cont );
+    printf( "Part No: 0x%X\n", partNo );
+
+
+    // more ROM table:
+    comArrayClear( &mainComArray );
+
+    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
+
+    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE);
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x000
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x004 (0x000)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x008 (0x004)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x00C (0x008)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010 (0x00C)
+
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x014
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x018
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x01C
+
+    comArrayTransfer( &mainComArray );
+
+    uint32_t romRegs[6];
+
+    romRegs[0] = comArrayRead( &mainComArray, 7 );
+    romRegs[1] = comArrayRead( &mainComArray, 8 );
+    romRegs[2] = comArrayRead( &mainComArray, 9 );
+    romRegs[3] = comArrayRead( &mainComArray, 10 );
+
+    romRegs[4] = comArrayRead( &mainComArray, 11 );
+    romRegs[5] = comArrayRead( &mainComArray, 12 );
+
+    printf( "The ROM table points to components (via their address):\n");   //IHI0074E_debug_interface_v6_0_architecture_specification.pdf
+    for (size_t i = 0; i < 6; i++) {
+        printf( "ROM reg %d: 0x%08X; offset: 0x%08X; powerid: %04X; poweridvalid: %d; format: %d; present: %d\n", i, romRegs[i], ((romRegs[i] & 0xFFFFF000) >> 12), ((romRegs[i] & 0x1F0) >> 4), ((romRegs[i] & 0x4) >> 2),  ((romRegs[i] & 0x2) >> 1), (romRegs[i] & 0x1) );
+    }
+
+    printf( "ROM 0x%04X: 0x%08X (final entry is all zero)\n", 0x018, comArrayRead( &mainComArray, 13 ) );
+    //printf( "ROM 0x%04X: 0x%08X\n", 0x01C, comArrayRead( &mainComArray, 14 ) );
+
+    for (size_t i = 0; i < 6; i++)
+    {
+        printf( "\nComponent #%d:\n", i );
+
+        // more ROM table:
+        comArrayClear( &mainComArray );
+
+        comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+        comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+        comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+        comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
+
+        comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
+        comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE + (romRegs[i] & 0xFFFFF000));
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x000
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x004 (0x000)
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x008 (0x004)
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x00C (0x008)
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010 (0x00C)
+
+        comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE + (romRegs[i] & 0xFFFFF000) + 0xFD0);      //component and peripheral ID registers
+
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );     //cidr1
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+
+        comArrayTransfer( &mainComArray );
+        printf( "Component registers:\n" );
+        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 7 ));
+        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 8 ));
+        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 9 ));
+        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 10 ));
+        printf( "Component and peripheral ID registers:\n" );
+        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 13 ));
+        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 14 ));
+        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 15 ));
+        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 16 ));
+        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 17 ));
+        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 18 ));
+        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 19 ));
+        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 20 ));
+        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 21 ));
+        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 22 ));    //CIDR1??
+        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 23 ));
+        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 24 ));
+
+        printf("class: 0x%08X\n", ((comArrayRead( &mainComArray, 22 ) & 0xF0) >> 4) );
+    }
+
+
+
+    return ((dpIDCODE & (15 << 12)) >> 12);
 }
 
 
@@ -124,10 +358,10 @@ void read_ids( int file )       //reads some registers
     reply = read( file, &myReadBuffer, 7*8);   //read 4 bytes -->> always reads IDCODE
     //printf( "read response: %d\n", reply );
 
-    //printf( "IDCODE: 0x%08x (0x%08x)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
+    //printf( "IDCODE: 0x%08X (0x%08X)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
     printf( "MEM-AP info: \n");
-    printf( "DEBUG BASE: 0x%08x (0x%08x)\n", myReadBuffer[2*5 + 1], myReadBuffer[2*5]);
-    printf( "AP-IDR: 0x%08x (0x%08x)\n", myReadBuffer[2*6 + 1], myReadBuffer[2*6]);     //AP ID
+    printf( "DEBUG BASE: 0x%08X (0x%08X)\n", myReadBuffer[2*5 + 1], myReadBuffer[2*5]);
+    printf( "AP-IDR: 0x%08X (0x%08X)\n", myReadBuffer[2*6 + 1], myReadBuffer[2*6]);     //AP ID
 }
 
 //this could be implemented in the driver as some higher level CMD resulting in the whole memory read portion terminated by a 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
@@ -160,7 +394,7 @@ void read_mcu_id( int file )
       reply = read( file, &myReadBuffer, 8*8);
       //printf( "read response: %d\n", reply );
 
-      printf( "MCU ID: 0x%08x (0x%08x)\n", myReadBuffer[2*7 + 1], myReadBuffer[2*7]);     //AP ID
+      printf( "MCU ID: 0x%08X (0x%08X)\n", myReadBuffer[2*7 + 1], myReadBuffer[2*7]);     //AP ID
 }
 
 void fileprint( char *path, int wordsToRead )
@@ -190,14 +424,14 @@ void fileprint( char *path, int wordsToRead )
         wordsToRead = -1;
     }
 
-    printf("\n0x%08x: ", 0);
+    printf("\n0x%08X: ", 0);
     while( !done )
     {
         freadReply = fread( byteBuffer, sizeof(byteBuffer), 1 , binFilePtr );
 
         if( freadReply == 1 )   //all fine
         {
-            printf("%08x ", wordBuffer[0]);
+            printf("%08X ", wordBuffer[0]);
         }
         else
         {
@@ -208,7 +442,7 @@ void fileprint( char *path, int wordsToRead )
 
         if( (wordsRead % 4) == 0 )
         {
-            printf("\n0x%08x: ", wordsRead*4);
+            printf("\n0x%08X: ", wordsRead*4);
         }
 
         if( wordsRead == wordsToRead )      //max given
@@ -322,7 +556,7 @@ void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
 
 	if( *baseOffset != 0 )
     {
-        printf( "automatically shifted base address by -0x%08x\n", *baseOffset);
+        printf( "automatically shifted base address by -0x%08X\n", *baseOffset);
         printf( "increased wordCount by %d\n", (*baseOffset/4));
     }
 }
@@ -350,10 +584,10 @@ void stmPrint( uint32_t baseAddr, uint32_t wordCount )
     {
         if( ( i % 4 ) == 0 )
         {
-            printf( "0x%08x: ", i*4 + newBaseAddr );
+            printf( "0x%08X: ", i*4 + newBaseAddr );
         }
-        printf( "%08x (%08x) ", dataArray[i], debugArray[i] );          //display ACK
-        //printf( "%08x ", dataArray[i] );                                   //do not display ACK
+        printf( "%08X (%08X) ", dataArray[i], debugArray[i] );          //display ACK
+        //printf( "%08X ", dataArray[i] );                                   //do not display ACK
 
         if( ( ( i + 1 ) % 4) == 0 )
         {
@@ -401,7 +635,7 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
 
     for( int i = wordOffset; i < newWordCount; i++ )
     {
-        //printf( "%08x (%08x) ", dataArray[i], debugArray[i] );
+        //printf( "%08X (%08X) ", dataArray[i], debugArray[i] );
         fwrite( &dataArray[i], sizeof(dataArray[i]), 1, file);
     }
 
