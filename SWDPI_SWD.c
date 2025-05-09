@@ -94,6 +94,32 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 	return 0;
 }
 
+int SWDGPIOBBD_abort( void )
+{
+	int abortcounter = 0;
+	uint8_t ack = 2;
+	uint8_t cmd = SWD_CMD_ABORT_CMD;
+	uint32_t data = 0x1F;
+
+	//could first read error flags:
+
+	while( (ack == 2) && (abortcounter < 100) )
+	{
+		SWDGPIOBBD_command( cmd );
+		SWDGPIOBBD_cycleTurnaround2Read();
+		SWDGPIOBBD_receiveAck( &ack );
+		abortcounter++;
+		if( ack == 2 )
+			SWDGPIOBBD_cycleTurnaround2Write();
+		//should have a turnaround write here?? or in the very beginning
+	}
+	SWDGPIOBBD_cycleTurnaround2Write();
+	SWDGPIOBBD_sendData( &data );	// ABORT register: [4]=clear the STICKYORUN, [3]=clear the WDATAERR, [2]=clear the STICKYERR, [1]=clear the STICKYCMP, [0]=generate a DAP abort
+
+	pr_info("abort operation: (%d time(s)) ack: %d\n", abortcounter, ack);
+
+	return 0;
+}
 
 
 

@@ -30,6 +30,9 @@ typedef struct APinfo
     uint8_t     class;
     uint16_t    designer;
     uint8_t     revision;
+
+    uint8_t     format;
+    uint8_t     present;
 } APinfo;
 
 //information for debug component
@@ -111,12 +114,31 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index star
     return myComArray->replyArray32[index*2 + 1];
 }
 
-void comArrayTransfer( comArray *myComArray )
+int comArrayTransfer( comArray *myComArray )
 {
     int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
     write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes
     read( SWDPIfile, myComArray->replyArray32,  myComArray->filling*2*4 );
+
+    //check for errors:
+    for (size_t i = 0; i < myComArray->filling; i++)
+    {
+        if( (myComArray->replyArray32[i*2] >> 24) == 2 ) //if ACK not OK
+        {
+            printf( "SWD transfer error, received WAIT on transfer #%d\n", i);
+            close( SWDPIfile );
+            return -2;
+        }
+        else if( (myComArray->replyArray32[i*2] >> 24) == 4 ) //if ACK not OK
+        {
+            printf( "SWD transfer error, received FAIL on transfer #%d\n", i);
+            close( SWDPIfile );
+            return -4;
+        }
+    }
+
     close( SWDPIfile );
+    return 0;
 }
 
 // * IHI0031G_debug_interface_v5_2_architecture_specification.pdf
@@ -132,7 +154,7 @@ void comArrayTransfer( comArray *myComArray )
 // DBGMCU_IDCODE at address 0xE0042000  (for some devices)
 // the Cortex SCB->CPUID would also be interesting... but where are these located???
 
-void extractComponentInfo( uint32_t base, DCinfo *componentInfo )
+int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
 {
     // IHI0074E_debug_interface_v6_0_architecture_specification.pdf
     comArrayClear( &mainComArray );
@@ -141,11 +163,15 @@ void extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
     comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
     comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );               // CSW
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, base + 0xFCC );             // TAR, set offset 0xFD0 to CIDR0
+    // Any ROM Table must implement a set of Component and Peripheral ID Registers, that start at offset 0xFD0
+    //0xF00-0xFFC are the CoreSight management registers - common to all CoreSight Components
+    //0xFCC -> memtype
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFCC
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFCC      //delayed by 1
 
-    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, base + 0x0FCC );                  //offset for fixed registers
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFCC                  // ... memory type register
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD0 (PIDR4)          // ... memory type register (delayed access)
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD0 (PIDR4)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD4 (PIDR5)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFD8 (PIDR6)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFDC (PIDR7)
@@ -154,14 +180,19 @@ void extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFE4 (PIDR1)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFE8 (PIDR2)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFEC (PIDR3)
+
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF0 (CIDR0)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF4 (CIDR1)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFF8 (CIDR2)
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0xFFC (CIDR3)
 
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    int err = comArrayTransfer( &mainComArray );
 
-    comArrayTransfer( &mainComArray );
+    if( err < 0 )
+    {
+        printf( "comArrayTransfer error!\n");
+        return err;
+    }
 
     componentInfo->memType = comArrayRead( &mainComArray, 7 ) & 0xFF;
 
@@ -170,38 +201,52 @@ void extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     componentInfo->CIDR[2] = comArrayRead( &mainComArray, 18 );
     componentInfo->CIDR[3] = comArrayRead( &mainComArray, 19 );
 
-    componentInfo->PIDR[0] = comArrayRead( &mainComArray, 12 ) & 0xFF;
-    componentInfo->PIDR[1] = comArrayRead( &mainComArray, 13 ) & 0xFF;
-    componentInfo->PIDR[2] = comArrayRead( &mainComArray, 14 ) & 0xFF;
-    componentInfo->PIDR[3] = comArrayRead( &mainComArray, 15 ) & 0xFF;
-    componentInfo->PIDR[4] = comArrayRead( &mainComArray, 8 ) & 0xFF;
+//    componentInfo->PIDR[0] = comArrayRead( &mainComArray, 12 ) & 0xFF;
+//    componentInfo->PIDR[1] = comArrayRead( &mainComArray, 13 ) & 0xFF;
+//    componentInfo->PIDR[2] = comArrayRead( &mainComArray, 14 ) & 0xFF;
+//    componentInfo->PIDR[3] = comArrayRead( &mainComArray, 15 ) & 0xFF;
+//    componentInfo->PIDR[4] = comArrayRead( &mainComArray, 8 ) & 0xFF;
 
     componentInfo->class = componentInfo->CIDR[1] >> 4; //*** 0x0=generic, 0x1=ROM Table, 0x9=CoreSightComponent, 0xB=peripheralTestBlock, 0xE=genericIPComponent, 0xF=CoreLink or PrimeCell
 //    uint32_t partNo = regPIDR0 | ((regPIDR1 & 0xF) << 8);
 //    uint32_t JEP106id = ((regPIDR1 & 0xF0) >> 4) | ((regPIDR2 & 0x7) << 4);
 //    uint32_t JEP106cont = regPIDR4 & 0xF;
 
-
+    return 0;
 }
 
-void extractComponent( uint32_t base )
+
+// NON-critical Errors:
+//  - BASE is a faulting location
+//  - BASE + 0xFF0 are not valid registers
+//  - ROM table entry points to faulting location
+//  - ROM table entry has no valid registers at offset 0xFF0
+// maybe subsystems have to be turned on first???
+
+void extractComponent( uint32_t base, uint32_t depth )
 {
     DCinfo thisComponentInfo;
     comArray localComArray;
 
     printf( "ExtractComponent at 0x%X:\n", base );
 
-    comArrayInit( &localComArray );
+    // FIRST get information about this Component(s)
+    int err = extractComponentInfo( base, &thisComponentInfo );
+    if ( err < 0 )
+    {
+        printf( "This component seems invalid!\n" );
+        return;
+    }
 
-    extractComponentInfo( base, &thisComponentInfo );
     printf( "This component has class 0x%X and memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
+    printf( "(CIDR0: 0x%08X, CIDR1: 0x%08X, CIDR2: 0x%08X, CIDR3: 0x%08X)\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     // memory Type = 0b1 if system memory is present on the bus (deprecated)
 
-    uint32_t romAddresses[32];
-    int romAddrCount = 0;
+    comArrayInit( &localComArray );
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
+        printf( "--> ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
         comArrayClear( &localComArray );
 
         comArrayAdd( &localComArray, DP_IDCODE_CMD, 0x0 );
@@ -209,8 +254,8 @@ void extractComponent( uint32_t base )
         comArrayAdd( &localComArray, DP_CTRLSTAT_R_CMD, 0x0 );
         comArrayAdd( &localComArray, DP_SELECT_CMD, 0x00 );
         comArrayAdd( &localComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-        comArrayAdd( &localComArray, MEMAP_WRITE1_CMD, base);
-        comArrayAdd( &localComArray, MEMAP_READ3_CMD, 0x0 );   // 0x000
+        comArrayAdd( &localComArray, MEMAP_WRITE1_CMD, base);               //is fine for base access port/component
+        comArrayAdd( &localComArray, MEMAP_READ3_CMD, 0x0 );                // 0x000 DO NOT ALTERNATE WRITES AND READS TO DRW
 
         for( int i = 0; i < 32; i++ )
         {
@@ -218,26 +263,52 @@ void extractComponent( uint32_t base )
         }
         comArrayTransfer( &localComArray );
 
-        printf( "ROM table:\n" );
+        uint32_t    romRegister[32] = {0, };
+        int         subRomCount = 0;
+
         for( int i = 0; i < 32; i++ )
         {
-            romAddresses[i] = comArrayRead( &localComArray, 7 + i );
-            if( romAddresses[i] == 0x0 )
+            romRegister[i] = comArrayRead( &localComArray, 7 + i );            //[31:12]=OFFSET, [8:4]=POWERID, [2]=poweridvalid, [1]=format, [0]=present
+            if( romRegister[i] == 0x0 )
             {
                 i = 32;
             }
             else
             {
-                if( (romAddresses[i] & 0xFFFFFFFC) != base )    //avoid infinite loop
+                printf("RAW ROM REGISTER: 0x%08X\n", romRegister[i] );
+
+                uint32_t nextComponentAddr;
+                if( (romRegister[i] >> 31) == 1 )    //negative    (most significant bit true -> negative)
                 {
-                    printf( "\t 0x%08X\n", romAddresses[i] & 0xFFFFFFFC );
-                //    extractComponent( romAddresses[i] & 0xFFFFFFFC );                       //this somehow crashes the MCU when romAddresses[i] == 0x00200000
-                //    printf("\n");
+                    nextComponentAddr = base - ((~romRegister[i] & 0xFFFFF000) + 0x1000);     //two's complement... apparently
+                    printf( "---> offset: -0x%08X addr: 0x%08X\n", ~(romRegister[i] & 0xFFFFF000) + 0x1000, nextComponentAddr );
                 }
-                romAddrCount++;
+                else
+                {
+                    nextComponentAddr = base + (romRegister[i] & 0x7FFFF000);
+                    printf( "---> offset: 0x%08X addr: 0x%08X\n", (romRegister[i] & 0x7FFFF000), nextComponentAddr );   //drop bit 19
+                }
+                printf( "\tPOWERID: 0x%02X, valid=%d, format=%d(RAO), present=%d\n", ((romRegister[i] & 0x1F0) >> 4), ((romRegister[i] & 0x4) >> 2), ((romRegister[i] & 0x2) >> 1), (romRegister[i] & 0x1) );
+
+                extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );                       //this some how does not work...
+                printf("\n");
+                subRomCount++;
             }
         }
-        printf( "(found %d entries in ROM table!)\n\n", romAddrCount );
+        printf( "(found %d entries in ROM table!)\n\n", subRomCount );
+    }
+    else if( thisComponentInfo.class == 0x9 )   //IHI0029F_coresight_v3_0_architecture_specification.pdf
+    {
+        printf( "--> CoreSightComponent:\n" );
+        //Addresses 0xF00 to 0xFCC are reserved for use by CoreSight management registers.
+    }
+    else if( thisComponentInfo.class == 0xE )
+    {
+        printf( "--> Generic IP component:\n" );
+    }
+    else
+    {
+        printf( "--> not ROM table:\n" );
     }
 }
 
@@ -245,127 +316,33 @@ void extractComponent( uint32_t base )
 
 int extractAccessPort( APinfo *currentAP )
 {
-    printf( "\tdebugBase: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
-    printf( "\tAP CFG: %d (little endian = 0; big endian = 1)\n\n", currentAP->apCFG );
+    printf( "Access Port Information:\n" );
+    printf( "\BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
+    printf( "\tAP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
+    printf( "\tformat: %d (1->ADIv5/0->legacy), present: %d\n\n", currentAP->format,  currentAP->present );
 
-    extractComponent( currentAP->apBASE );
+    extractComponent( currentAP->apBASE, 0 );
 
-    extractComponent( 0xF00FF000 ); //same as before???
+    printf("\n\n");
+
+    //extractComponent( 0xFFF0F000 );
+/*printf("\n");
+    extractComponent( 0xFFF02000 );
+printf("\n");
+    extractComponent( 0xFFF03000 );
+printf("\n");
+    extractComponent( 0xFFF01000 );
+printf("\n");
+    extractComponent( 0xFFF41000 );
+printf("\n");
+    extractComponent( 0xFFF42000 );*/
+
+    //extractComponent( 0xFFF0F000 ); //same as before???
     //extractComponent( 0x00200000 ); // THIS crashes the MCU???
-
 
     return 0;
 }
-/*
-    //look at CIDR0 - CIDR3 located at apBASE + 0xFF0 + n*4
 
-
-    // IHI0074E_debug_interface_v6_0_architecture_specification.pdf
-    // IHI0029F_coresight_v3_0_architecture_specification.pdf
-
-    // more ROM table:
-    comArrayClear( &mainComArray );
-
-    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
-    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
-    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
-    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
-
-    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE);
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x000
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x004 (0x000)
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x008 (0x004)
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x00C (0x008)
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010 (0x00C)
-
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x014
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x018
-    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x01C
-
-    comArrayTransfer( &mainComArray );
-
-    uint32_t romRegs[6];
-
-    romRegs[0] = comArrayRead( &mainComArray, 7 );
-    romRegs[1] = comArrayRead( &mainComArray, 8 );
-    romRegs[2] = comArrayRead( &mainComArray, 9 );
-    romRegs[3] = comArrayRead( &mainComArray, 10 );
-
-    romRegs[4] = comArrayRead( &mainComArray, 11 );
-    romRegs[5] = comArrayRead( &mainComArray, 12 );
-
-    printf( "The ROM table points to components (via their address):\n");   //IHI0074E_debug_interface_v6_0_architecture_specification.pdf
-    for (size_t i = 0; i < 6; i++) {
-        printf( "ROM reg %d: 0x%08X; offset: 0x%08X; powerid: %04X; poweridvalid: %d; format: %d; present: %d\n", i, romRegs[i], ((romRegs[i] & 0xFFFFF000) >> 12), ((romRegs[i] & 0x1F0) >> 4), ((romRegs[i] & 0x4) >> 2),  ((romRegs[i] & 0x2) >> 1), (romRegs[i] & 0x1) );
-    }
-
-    printf( "ROM 0x%04X: 0x%08X (final entry is all zero)\n", 0x018, comArrayRead( &mainComArray, 13 ) );
-    //printf( "ROM 0x%04X: 0x%08X\n", 0x01C, comArrayRead( &mainComArray, 14 ) );
-
-    for (size_t i = 0; i < 6; i++)
-    {
-        printf( "\nComponent #%d:\n", i );
-
-        // more ROM table:
-        comArrayClear( &mainComArray );
-
-        comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
-        comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
-        comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
-        comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
-
-        comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-        comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE + (romRegs[i] & 0xFFFFF000));
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x000
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x004 (0x000)
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x008 (0x004)
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x00C (0x008)
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );   // 0x010 (0x00C)
-
-        comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, apBASE + (romRegs[i] & 0xFFFFF000) + 0xFD0);      //component and peripheral ID registers
-
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );     //cidr1
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-
-        comArrayTransfer( &mainComArray );
-        printf( "Component registers:\n" );
-        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 7 ));
-        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 8 ));
-        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 9 ));
-        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 10 ));
-        printf( "Component and peripheral ID registers:\n" );
-        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 13 ));
-        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 14 ));
-        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 15 ));
-        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 16 ));
-        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 17 ));
-        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 18 ));
-        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 19 ));
-        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 20 ));
-        printf("0x000: 0x%08X\n", comArrayRead( &mainComArray, 21 ));
-        printf("0x004: 0x%08X\n", comArrayRead( &mainComArray, 22 ));    //CIDR1??
-        printf("0x008: 0x%08X\n", comArrayRead( &mainComArray, 23 ));
-        printf("0x00C: 0x%08X\n", comArrayRead( &mainComArray, 24 ));
-
-        printf("class: 0x%08X\n", ((comArrayRead( &mainComArray, 22 ) & 0xF0) >> 4) );
-    }
-
-
-
-    return ((dpIDCODE & (15 << 12)) >> 12);*/
 
 
 int detectSystem( void )
@@ -383,25 +360,35 @@ int detectSystem( void )
         comArrayClear( &mainComArray );
 
         comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );                   //read DP-idcode
-        comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );        //power up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
+        comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );               //read potential errors
+        comArrayAdd( &mainComArray, DP_ABORT_CMD, 0x1E );                   //clean errors
+        comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x54000000 );        //power up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
         comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+
         comArrayAdd( &mainComArray, DP_SELECT_CMD, (APcount << 24) | 0xF0 );                  //selects AP [31:24] = 0x0, bank [7:4] = 0xF
 
+        //read ACCESS PORT REGISTERS
         comArrayAdd( &mainComArray, MEMAP_READ0_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ1_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ2_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+        comArrayAdd( &mainComArray, MEMAP_READ1_CMD, 0x0 );         //...bASE2
+        comArrayAdd( &mainComArray, MEMAP_READ2_CMD, 0x0 );         //...CFG
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );         //...BASE
+        comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );         //...IDR
 
         comArrayTransfer( &mainComArray );
 
-        myAccessPorts[APcount].apIDR = comArrayRead( &mainComArray, 8 );    //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
+        printf( "*CTRLSTAT before cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 1 ) );
+        printf( "*CTRLSTAT after cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 4 ) );
+
+        myAccessPorts[APcount].apIDR = comArrayRead( &mainComArray, 10 );    //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
 
         if( myAccessPorts[APcount].apIDR != 0 ) //check IDCODE of AP --> AP is present if IDCODE nonzero
         {
-            myAccessPorts[APcount].apBASE = comArrayRead( &mainComArray, 7 ) & 0xFFFFFFFC;
-            myAccessPorts[APcount].apBASE2 = comArrayRead( &mainComArray, 5 );
-            myAccessPorts[APcount].apCFG = comArrayRead( &mainComArray, 6 );
+            myAccessPorts[APcount].apBASE = comArrayRead( &mainComArray, 9 ) & 0xFFFFF000;      // 32-bit: [31:12] contain BASEADDR[31:12]
+            myAccessPorts[APcount].apBASE2 = comArrayRead( &mainComArray, 7 );
+            myAccessPorts[APcount].apCFG = comArrayRead( &mainComArray, 8 );
+
+            myAccessPorts[APcount].format = (comArrayRead( &mainComArray, 9 ) & 0x2) >> 1;
+            myAccessPorts[APcount].present = (comArrayRead( &mainComArray, 9 ) & 0x1);
 
             myAccessPorts[APcount].type = myAccessPorts[APcount].apIDR & 0xF;   //** 0x0:jtag 0x1:AMBA AHB3 bus 0x2:AMBA APB2 or APB3 ... C2-229
             myAccessPorts[APcount].variant = ((myAccessPorts[APcount].apIDR & 0xF0) >> 4);
@@ -420,12 +407,12 @@ int detectSystem( void )
     uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
 
     //DP
-    printf( "DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
+    printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
     printf( "\t--> version: %d\n", ((dpIDCODE & (15 << 12)) >> 12) );
     //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );
 
     //APs
-    printf( "found %d Access Port(s)!\n\n", APcount );
+    printf( "\tfound %d Access Port(s)!\n\n", APcount );
 
     for (size_t i = 0; i < APcount; i++)
     {
@@ -760,7 +747,6 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
 
 int main( int argc, char *argv[] )
 {
-
     //printf("param1: %s\n", argv[1]);
     //printf("param2: %s\n", argv[2]);
     //printf("param3: %s\n", argv[3]);

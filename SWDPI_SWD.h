@@ -12,6 +12,8 @@
 #define SWD_CMD_READ_IDCODE 0xA5            // 0b10100101
 //response: [31-28] Version, [27-12] PARTNO (0xBA00 or 0xBA10), [11, 1] DESIGNER (ARM=01000111011), [0]=1
 
+#define SWD_CMD_ABORT_CMD   0x81
+
 #define SWD_ACK_OK 0x001
 #define SWD_ACK_WAIT 0x010
 #define SWD_ACK_FAULT 0x100
@@ -41,6 +43,7 @@ int SWDGPIOBBD_initRaspi( uint8_t raspi );
 void SWDGPIOBBD_openDevice( void );
 
 int SWDGPIOBBD_transfer( uint64_t *cmd );
+int SWDGPIOBBD_abort( void );
 
 void SWDGPIOBBD_sequence( uint8_t *seq, uint32_t seqLength );
 void SWDGPIOBBD_print_command( uint8_t cmd );

@@ -155,6 +155,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 		{
 			kfree( receiveBuffer );
 		}
+		SWDGPIOBBD_readwritelock = 0;
 		return -1;
 	}
 
@@ -250,7 +251,13 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 		if( reply < 0 )
 		{
 			pr_info("error %d aborting \n\n", reply);
-			return reply;	//abort
+
+			receiveBuffer[receiveBuffer_level] = sendBuffer[i];		//so that we get the error back
+			receiveBuffer_level++;
+
+			SWDGPIOBBD_abort();
+
+			return receiveBuffer_level;	//abort
 		}
 		//pr_info("\n");
 		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
@@ -298,7 +305,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	if( count > (receiveBuffer_level - receiveBuffer_levelRead ))		//want to read more than is available
 	{
 		pr_warn("trying to read more than available \n");
-		count = (receiveBuffer_level - receiveBuffer_levelRead );
+		count = (receiveBuffer_level - receiveBuffer_levelRead );	//only returns available data
 		//return -1;
 	}
 
