@@ -589,13 +589,17 @@ void read_mcu_id()
     comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
     comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
     comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0x40015800 );     // STM32L0x3
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0x40015800 );     // STM32L0x3     //   0xE0042000
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0xE0042000 );
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
 
     comArrayTransfer( &mainComArray );
 
     printf( "MCU ID: 0x%08X\n", comArrayRead( &mainComArray, 7 ) );     //AP ID
+    printf( "MCU ID: 0x%08X\n", comArrayRead( &mainComArray, 10 ) );     //AP ID
 }
 
 void fileprint( char *path, int wordsToRead )
