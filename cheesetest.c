@@ -522,7 +522,7 @@ int detectSystem( void )
     switch( dpIDCODE )
     {
         case 0x0BC11477:
-            printf( "default Cortex-M0+ Core\n");
+            printf( "Default Cortex-M0+ Core\n");
             break;
         case 0x2BA01477:
             printf( "Cortex-M4 Core w. FPU\n");
@@ -533,20 +533,36 @@ int detectSystem( void )
             break;
     }
 
-    printf( "\t--> DP revision/version (0x4=JTAG; 0x2=SW; ...): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
-    printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
+    uint32_t dpPartNo = (dpIDCODE >> 12) & 0xFFFF;
 
-    printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
+    if( dpPartNo == 0xBA00 )
+    {
+        printf( "JTAG-DP version: 0x%X\n", (dpIDCODE >> 28));
+    }
+    else if( dpPartNo == 0xBA10 )
+    {
+        printf( "SW-DP version: 0x%X\n", (dpIDCODE >> 28));
+    }
+    else
+    {
+        uint32_t dpVersion = (dpIDCODE >> 12) & 0xF;
+        printf( "DP version: 0x%X\n", dpVersion);
+    }
+    printf( "DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
 
-    printf( "\t--> DP partNo (???): 0x%X\n", ((dpIDCODE & 0x0FF00000) >> 20) );
-    printf( "\t--> DP version: 0x%X\n", ((dpIDCODE & 0xF000) >> 12) );
+
+//    printf( "\t--> DP revision/version (0x4=JTAG; 0x2=SW; ...): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
+//    printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
+
+//    printf( "\t--> DP partNo (???): 0x%X\n", ((dpIDCODE & 0x0FF00000) >> 20) );
+//    printf( "\t--> DP version: 0x%X\n", ((dpIDCODE & 0xF000) >> 12) );
     //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
 
 
 
 
     //APs
-    printf( "\tfound %d Access Port(s)!\n\n", APcount );
+    printf( "\nfound %d Access Port(s)!\n\n", APcount );
 
     for (size_t i = 0; i < APcount; i++)
     {
