@@ -50,7 +50,11 @@ typedef struct APinfo
 typedef struct DCinfo
 {
     uint32_t CIDR[4];
-    uint32_t PIDR[8];
+    uint32_t PIDR[8];       //5-7 are reserved
+
+    uint32_t compactCIDR;
+    uint64_t compactPIDR;
+
     uint32_t class;
     uint32_t memType;       //could probably reduce size of these variables...
     uint32_t partNo;
@@ -59,8 +63,6 @@ typedef struct DCinfo
     uint32_t JEP106cont;
     uint32_t size;
     uint32_t revand;
-
-
 } DCinfo;
 
 //for SWDB comms
@@ -172,7 +174,17 @@ void processComponenFields( DCinfo *componentInfo )
     componentInfo->JEP106id = ((componentInfo->PIDR[1] & 0xF0) >> 4) | ((componentInfo->PIDR[2] & 0x7) << 4);
     componentInfo->JEP106cont = componentInfo->PIDR[4] & 0xF;
 
+    componentInfo->compactCIDR = (componentInfo->CIDR[0] & 0xFF) << 0;
+    componentInfo->compactCIDR |= (componentInfo->CIDR[1] & 0xFF) << 8;
+    componentInfo->compactCIDR |= (componentInfo->CIDR[2] & 0xFF) << 16;
+    componentInfo->compactCIDR |= (componentInfo->CIDR[3] & 0xFF) << 24;
 
+    componentInfo->compactPIDR = (componentInfo->PIDR[4] & 0xFF);//
+    componentInfo->compactPIDR <<= 32;
+    componentInfo->compactPIDR |= (componentInfo->PIDR[0] & 0xFF) << 0;
+    componentInfo->compactPIDR |= (componentInfo->PIDR[1] & 0xFF) << 8;
+    componentInfo->compactPIDR |= (componentInfo->PIDR[2] & 0xFF) << 16;
+    componentInfo->compactPIDR |= (componentInfo->PIDR[3] & 0xFF) << 24;
 
 }
 
@@ -286,16 +298,39 @@ void extractComponent( uint32_t base, uint32_t depth )
 
     tabsf( depth );printf( "Class 0x%X; Memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
     tabsf( depth );printf( "PartNo 0x%X; jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
-    tabsf( depth );printf( "(CIDR0: 0x%08X, CIDR1: 0x%08X, CIDR2: 0x%08X, CIDR3: 0x%08X)\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
-    tabsf( depth );printf( "(PIDR0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X)\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
-    tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
+    tabsf( depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
+    tabsf( depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
+    tabsf( depth );printf( "manufacturer: %s\n\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
+
+    tabsf( depth );
+    if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
+    {
+        printf( "***** Cortex-M0+ ROM table!!\n" );
+    }
+    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04002BB470 ) )
+    {
+        printf( "***** Cortex-M1 ROM table!!\n" );
+    }
+    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x0 ) )
+    {
+        printf( "***** Cortex-M3 ROM table!!\n" );
+    }
+    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C4 ) )
+    {
+        printf( "***** Cortex-M4 ROM table!!\n" );
+    }
+    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C8 ) )
+    {
+        printf( "***** Cortex-M7 ROM table!!\n" );
+    }
+
     // memory Type = 0b1 if system memory is present on the bus (deprecated)
 
     comArrayInit( &localComArray );
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
-        tabsf( depth );printf( "== ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
+        tabsf( depth );printf( "== ROM table content:\n\n" );       //-->> READ ALL THE ADDRESSES:
         comArrayClear( &localComArray );
 
         comArrayAdd( &localComArray, DP_IDCODE_CMD, 0x0 );
@@ -341,7 +376,7 @@ void extractComponent( uint32_t base, uint32_t depth )
 
                 if( (romRegister[i] & 0x1) )
                 {
-                    tabsf( depth );printf( "Component present: extract!\n");
+                    tabsf( depth );printf( "Component present: extract!\n\n");
                     extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );                       //this some how does not work...
                 }
                 else
@@ -399,6 +434,8 @@ int extractAccessPort( APinfo *currentAP )
 
         uint8_t     format;
         uint8_t     present;*/
+
+    printf( "------------------------------------------------------\n\n");
 
     extractComponent( currentAP->apBASE, 0 );
 
@@ -488,9 +525,13 @@ int detectSystem( void )
 
     //DP
     printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-    printf( "\t--> DP version (0x4=JTAG; 0x2=SW): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
+    printf( "\t--> DP revision/version (0x4=JTAG; 0x2=SW; ...): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
     printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
+
     printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
+
+    printf( "\t--> DP partNo (???): 0x%X\n", ((dpIDCODE & 0x0FF00000) >> 20) );
+    printf( "\t--> DP version: 0x%X\n", ((dpIDCODE & 0xF000) >> 12) );
     //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
 
 
@@ -521,64 +562,40 @@ int detectSystem( void )
 
 void read_ids( int file )       //reads some registers
 {
-    uint8_t cmdArray[7*8] = {
-    // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)],        DATA: [7-0], [15-8], [23-16], [31-24],
-                          DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
-                          DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x50,       //bit 28 and 30  --> power up system & debug. seems to work    & seems to be necessary to read out MEMAP_READ3_CMD etc in the NEXT RUN
-                          DP_CTRLSTAT_R_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
-                          DP_SELECT_CMD,        0x00, 0x00, 0x00,   0xF0,  0x00,   0x00,    0x00,       // [7...4]   APBANKSEL  --> selects active 4 word register bank on current AP...
+    comArrayClear( &mainComArray );
+    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0xF0 );
+    comArrayAdd( &mainComArray, MEMAP_READ2_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_READBUF_CMD, 0x0 );
 
-                          MEMAP_READ2_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //read
-                          MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // read MEM-AP
-                          DP_READBUF_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //actually reads the AP ID
-                      };
-
-    int32_t myReadBuffer[7*2] = {0,};   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
-    int reply = 0;
-
-    reply = write( file, cmdArray, 7*8 );                //write list of commands
-    //printf( "write response: %d\n", reply );
-
-    reply = read( file, &myReadBuffer, 7*8);   //read 4 bytes -->> always reads IDCODE
-    //printf( "read response: %d\n", reply );
+    comArrayTransfer( &mainComArray );
 
     //printf( "IDCODE: 0x%08X (0x%08X)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
-    printf( "MEM-AP info: \n");
-    printf( "DEBUG BASE: 0x%08X (0x%08X)\n", myReadBuffer[2*5 + 1], myReadBuffer[2*5]);
-    printf( "AP-IDR: 0x%08X (0x%08X)\n", myReadBuffer[2*6 + 1], myReadBuffer[2*6]);     //AP ID
+    //printf( "MEM-AP info: \n");
+    //printf( "DEBUG BASE: 0x%08X (0x%08X)\n", myReadBuffer[2*5 + 1], myReadBuffer[2*5]);
+    //printf( "AP-IDR: 0x%08X (0x%08X)\n", myReadBuffer[2*6 + 1], myReadBuffer[2*6]);     //AP ID
 }
 
 //this could be implemented in the driver as some higher level CMD resulting in the whole memory read portion terminated by a 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
-void read_mcu_id( int file )
+void read_mcu_id()
 {
-    uint8_t cmdArray[8*8] = {
-    // CMD: [7-0(cmd)], [15-8], [23-16], [31-24(ACK)],        DATA: [7-0], [15-8], [23-16], [31-24],
-                          DP_IDCODE_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       //low bytes send first...
-                          DP_CTRLSTAT_W_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x54,       //bit 26, 28 and 30  --> power up system & debug. seems to work    & seems to be necessary to read out MEMAP_READ3_CMD etc in the NEXT RUN
-                          DP_CTRLSTAT_R_CMD,    0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // 0x50 or 0x54
-                          DP_SELECT_CMD,        0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,       // [31...24] APSEL selects AP; [7...4] APBANKSEL selects active 4 word register bank on current AP...
-//is his always correct:
-                          MEMAP_WRITE0_CMD,     0x00, 0x00, 0x00,   0x12,  0x00,   0x00,    0x22,       //cmdArray32[8] = MEMAP_WRITE0_CMD; cmdArray32[9] = 0x22000012;
-                          // write address:
-                          MEMAP_WRITE1_CMD,     0x00, 0x00, 0x00,   0x00,  0x58,   0x01,    0x40,       // --> addr 0x40015800 is address of MCU device ID (maybe) maybe this is not universal...
-                          //MEMAP_WRITE1_CMD,     0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x08,
-// preivous seems to fail...
-                          MEMAP_READ3_CMD,      0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
-// here we get a wait cmd
-                          MEMAP_READ3_CMD,       0x00, 0x00, 0x00,   0x00,  0x00,   0x00,    0x00,
 
-                      };
+    comArrayClear( &mainComArray );
+    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0x40015800 );     // STM32L0x3
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
+    comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
 
-      int32_t myReadBuffer[8*2] = {0, };   //8 bytes per command --> 6*8=48 bytes is 12 32bit words
-      int reply = 0;
+    comArrayTransfer( &mainComArray );
 
-      reply = write( file, cmdArray, 8*8 );                //write list of commands
-     // printf( "write response: %d\n", reply );
-
-      reply = read( file, &myReadBuffer, 8*8);
-      //printf( "read response: %d\n", reply );
-
-      printf( "MCU ID: 0x%08X (0x%08X)\n", myReadBuffer[2*7 + 1], myReadBuffer[2*7]);     //AP ID
+    printf( "MCU ID: 0x%08X\n", comArrayRead( &mainComArray, 7 ) );     //AP ID
 }
 
 void fileprint( char *path, int wordsToRead )
@@ -864,6 +881,7 @@ int main( int argc, char *argv[] )
 
     // first collect some information
     detectSystem();
+    read_mcu_id();
 
     //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
