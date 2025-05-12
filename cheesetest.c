@@ -458,15 +458,6 @@ int detectSystem( void )
         //printf( "*CTRLSTAT before cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 1 ) );
         //printf( "*CTRLSTAT after cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 4 ) );
 
-        uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
-
-        //DP
-        printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-        printf( "\t--> DP version (0x4=JTAG; 0x2=SW): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
-        printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
-        printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
-        //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
-
         myAccessPorts[APcount].apIDR = comArrayRead( &mainComArray, 10 );    //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
 
         if( myAccessPorts[APcount].apIDR != 0 ) //check IDCODE of AP --> AP is present if IDCODE nonzero
@@ -492,6 +483,15 @@ int detectSystem( void )
         }
 
     }
+    // here it only prints once :)
+    uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
+
+    //DP
+    printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
+    printf( "\t--> DP version (0x4=JTAG; 0x2=SW): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
+    printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
+    printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
+    //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
 
 
     //APs
