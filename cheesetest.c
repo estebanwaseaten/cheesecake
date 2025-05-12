@@ -9,12 +9,23 @@
 #include "SWDPI_base.h"
 #include "registers.h"
 
+// a lot of sequences in openocd/src/jtag/swd.h
+
 //for comparing:
 // hexyl
 // xxd -
 // vbindiff
 
 #define MAX_COMS 64
+
+static const char * const jep106[][126] = {
+#include "jedec.inc"
+};
+
+static const char * const ap_types[9] = {
+#include "aptypes.inc"
+};
+
 
 //information for access port
 typedef struct APinfo
@@ -41,7 +52,14 @@ typedef struct DCinfo
     uint32_t CIDR[4];
     uint32_t PIDR[8];
     uint32_t class;
-    uint32_t memType;
+    uint32_t memType;       //could probably reduce size of these variables...
+    uint32_t partNo;
+    uint32_t jedec;
+    uint32_t JEP106id;
+    uint32_t JEP106cont;
+    uint32_t size;
+    uint32_t revand;
+
 
 } DCinfo;
 
@@ -141,6 +159,23 @@ int comArrayTransfer( comArray *myComArray )
     return 0;
 }
 
+void processComponenFields( DCinfo *componentInfo )
+{
+    componentInfo->class = componentInfo->CIDR[1] >> 4;     //*** 0x0=generic, 0x1=ROM Table, 0x9=CoreSightComponent, 0xB=peripheralTestBlock, 0xE=genericIPComponent, 0xF=CoreLink or PrimeCell
+
+    // from Peripheral Identification Registers
+    componentInfo->size = (componentInfo->PIDR[4] & 0xF0) >> 4;
+
+    componentInfo->partNo = componentInfo->PIDR[0] | ((componentInfo->PIDR[1] & 0xF) << 8);     //correct
+
+    componentInfo->jedec = ( componentInfo->PIDR[2] & 0x8 ) >> 3;
+    componentInfo->JEP106id = ((componentInfo->PIDR[1] & 0xF0) >> 4) | ((componentInfo->PIDR[2] & 0x7) << 4);
+    componentInfo->JEP106cont = componentInfo->PIDR[4] & 0xF;
+
+
+
+}
+
 // * IHI0031G_debug_interface_v5_2_architecture_specification.pdf
 // ** IHI0074E_debug_interface_v6_0_architecture_specification.pdf
 // *** IHI0029F_coresight_v3_0_architecture_specification.pdf
@@ -201,16 +236,18 @@ int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     componentInfo->CIDR[2] = comArrayRead( &mainComArray, 18 );
     componentInfo->CIDR[3] = comArrayRead( &mainComArray, 19 );
 
-//    componentInfo->PIDR[0] = comArrayRead( &mainComArray, 12 ) & 0xFF;
-//    componentInfo->PIDR[1] = comArrayRead( &mainComArray, 13 ) & 0xFF;
-//    componentInfo->PIDR[2] = comArrayRead( &mainComArray, 14 ) & 0xFF;
-//    componentInfo->PIDR[3] = comArrayRead( &mainComArray, 15 ) & 0xFF;
-//    componentInfo->PIDR[4] = comArrayRead( &mainComArray, 8 ) & 0xFF;
+    componentInfo->PIDR[0] = comArrayRead( &mainComArray, 12 ) & 0xFF;
+    componentInfo->PIDR[1] = comArrayRead( &mainComArray, 13 ) & 0xFF;
+    componentInfo->PIDR[2] = comArrayRead( &mainComArray, 14 ) & 0xFF;
+    componentInfo->PIDR[3] = comArrayRead( &mainComArray, 15 ) & 0xFF;
+    componentInfo->PIDR[4] = comArrayRead( &mainComArray, 8 ) & 0xFF;
+    componentInfo->PIDR[5] = comArrayRead( &mainComArray, 9 ) & 0x0;    //reserved
+    componentInfo->PIDR[6] = comArrayRead( &mainComArray, 10 ) & 0x0;   //reserved
+    componentInfo->PIDR[7] = comArrayRead( &mainComArray, 11 ) & 0x0;   //reserved
 
-    componentInfo->class = componentInfo->CIDR[1] >> 4; //*** 0x0=generic, 0x1=ROM Table, 0x9=CoreSightComponent, 0xB=peripheralTestBlock, 0xE=genericIPComponent, 0xF=CoreLink or PrimeCell
-//    uint32_t partNo = regPIDR0 | ((regPIDR1 & 0xF) << 8);
-//    uint32_t JEP106id = ((regPIDR1 & 0xF0) >> 4) | ((regPIDR2 & 0x7) << 4);
-//    uint32_t JEP106cont = regPIDR4 & 0xF;
+    processComponenFields( componentInfo );
+
+
 
     return 0;
 }
@@ -247,16 +284,18 @@ void extractComponent( uint32_t base, uint32_t depth )
         return;
     }
 
-
-    tabsf( depth );printf( "This component has class 0x%X and memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
+    tabsf( depth );printf( "Class 0x%X; Memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
+    tabsf( depth );printf( "PartNo 0x%X; jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
     tabsf( depth );printf( "(CIDR0: 0x%08X, CIDR1: 0x%08X, CIDR2: 0x%08X, CIDR3: 0x%08X)\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
+    tabsf( depth );printf( "(PIDR0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X)\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
+    tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
     // memory Type = 0b1 if system memory is present on the bus (deprecated)
 
     comArrayInit( &localComArray );
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
-        tabsf( depth );printf( "--> ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
+        tabsf( depth );printf( "== ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
         comArrayClear( &localComArray );
 
         comArrayAdd( &localComArray, DP_IDCODE_CMD, 0x0 );
@@ -318,8 +357,18 @@ void extractComponent( uint32_t base, uint32_t depth )
     }
     else if( thisComponentInfo.class == 0x9 )   //IHI0029F_coresight_v3_0_architecture_specification.pdf
     {
-        tabsf( depth );printf( "--> CoreSightComponent:\n" );
+        tabsf( depth );printf( "--> CoreSightComponent:\n" );       //not sure how to use those...
         //Addresses 0xF00 to 0xFCC are reserved for use by CoreSight management registers.
+        //AUTHSTATUS @ 0xFB8
+        //CLAIMSET @ 0xFA0 & CLAIMCLR @ 0xFA4
+        // Device Affinity Registers DEVAFF0 @ 0xFA8 and DEVAFF1 @ 0xFAC
+        // Device Architecture Register DEVARCH @ 0xFBC
+        // Device Configuration Register DEVID @ 0xFC8 DEVID1 @ 0xFC4 DEVID2 @ 0xFC0
+        // Device Type Identifier Register DEVTYPE @ 0xFCC
+        // Integration Mode Control Register ITCTRL @ 0xF00
+        // Software Lock Status/Access Register LSR @ 0xFB4 LAR @ 0xFB0
+
+
     }
     else if( thisComponentInfo.class == 0xE )
     {
@@ -338,7 +387,18 @@ int extractAccessPort( APinfo *currentAP )
     printf( "Access Port Information:\n" );
     printf( "\BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
     printf( "\tAP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
-    printf( "\tformat: %d (1->ADIv5/0->legacy), present: %d\n\n", currentAP->format,  currentAP->present );
+    printf( "\tformat: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
+    printf( "\ttype: %d, variant: %d, class: 0x%X, designer: 0x%X, revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer ,currentAP->revision );
+
+    /*    uint8_t     type;
+        uint8_t     variant;
+        uint8_t     res0;       //reserved
+        uint8_t     class;
+        uint16_t    designer;
+        uint8_t     revision;
+
+        uint8_t     format;
+        uint8_t     present;*/
 
     extractComponent( currentAP->apBASE, 0 );
 
@@ -395,8 +455,17 @@ int detectSystem( void )
 
         comArrayTransfer( &mainComArray );
 
-        printf( "*CTRLSTAT before cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 1 ) );
-        printf( "*CTRLSTAT after cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 4 ) );
+        //printf( "*CTRLSTAT before cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 1 ) );
+        //printf( "*CTRLSTAT after cleaning errs: 0x%08X\n", comArrayRead( &mainComArray, 4 ) );
+
+        uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
+
+        //DP
+        printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
+        printf( "\t--> DP version (0x4=JTAG; 0x2=SW): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
+        printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
+        printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
+        //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
 
         myAccessPorts[APcount].apIDR = comArrayRead( &mainComArray, 10 );    //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
 
@@ -423,12 +492,7 @@ int detectSystem( void )
         }
 
     }
-    uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
 
-    //DP
-    printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-    printf( "\t--> version: %d\n", ((dpIDCODE & (15 << 12)) >> 12) );
-    //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );
 
     //APs
     printf( "\tfound %d Access Port(s)!\n\n", APcount );
@@ -437,7 +501,7 @@ int detectSystem( void )
     {
         if( myAccessPorts[i].class == 8 )
         {
-            printf( "MEM-AP #%d (IDR=0x%08X, type=%d):\n", i, myAccessPorts[i].apIDR, myAccessPorts[i].type );
+            printf( "MEM-AP #%d (IDR=0x%08X, %s):\n", i, myAccessPorts[i].apIDR, ap_types[myAccessPorts[i].type] );
         }
         else if( myAccessPorts[i].class == 0 )
         {
