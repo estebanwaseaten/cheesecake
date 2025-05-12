@@ -215,6 +215,13 @@ int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     return 0;
 }
 
+void tabsf( uint32_t depth )
+{
+    for (size_t i = 0; i < depth; i++)
+    {
+        printf("\t");
+    }
+}
 
 // NON-critical Errors:
 //  - BASE is a faulting location
@@ -228,25 +235,28 @@ void extractComponent( uint32_t base, uint32_t depth )
     DCinfo thisComponentInfo;
     comArray localComArray;
 
-    printf( "ExtractComponent at 0x%X:\n", base );
+
+    tabsf( depth );printf( "ExtractComponent at 0x%X:\n", base );
 
     // FIRST get information about this Component(s)
     int err = extractComponentInfo( base, &thisComponentInfo );
     if ( err < 0 )
     {
-        printf( "This component seems invalid!\n" );
+
+        tabsf( depth );printf( "This component seems invalid!\n" );
         return;
     }
 
-    printf( "This component has class 0x%X and memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
-    printf( "(CIDR0: 0x%08X, CIDR1: 0x%08X, CIDR2: 0x%08X, CIDR3: 0x%08X)\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
+
+    tabsf( depth );printf( "This component has class 0x%X and memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
+    tabsf( depth );printf( "(CIDR0: 0x%08X, CIDR1: 0x%08X, CIDR2: 0x%08X, CIDR3: 0x%08X)\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     // memory Type = 0b1 if system memory is present on the bus (deprecated)
 
     comArrayInit( &localComArray );
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
-        printf( "--> ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
+        tabsf( depth );printf( "--> ROM table:\n\n" );       //-->> READ ALL THE ADDRESSES:
         comArrayClear( &localComArray );
 
         comArrayAdd( &localComArray, DP_IDCODE_CMD, 0x0 );
@@ -275,41 +285,49 @@ void extractComponent( uint32_t base, uint32_t depth )
             }
             else
             {
-                printf("RAW ROM REGISTER: 0x%08X\n", romRegister[i] );
+                tabsf( depth );printf("RAW ROM REGISTER: 0x%08X\n", romRegister[i] );
 
                 uint32_t nextComponentAddr;
                 if( (romRegister[i] >> 31) == 1 )    //negative    (most significant bit true -> negative)
                 {
                     nextComponentAddr = base - ((~romRegister[i] & 0xFFFFF000) + 0x1000);     //two's complement... apparently
-                    printf( "---> offset: -0x%08X addr: 0x%08X\n", ~(romRegister[i] & 0xFFFFF000) + 0x1000, nextComponentAddr );
+                    tabsf( depth );printf( "---> offset: -0x%08X addr: 0x%08X\n", ~(romRegister[i] & 0xFFFFF000) + 0x1000, nextComponentAddr );
                 }
                 else
                 {
                     nextComponentAddr = base + (romRegister[i] & 0x7FFFF000);
-                    printf( "---> offset: 0x%08X addr: 0x%08X\n", (romRegister[i] & 0x7FFFF000), nextComponentAddr );   //drop bit 19
+                    tabsf( depth );printf( "---> offset: 0x%08X addr: 0x%08X\n", (romRegister[i] & 0x7FFFF000), nextComponentAddr );   //drop bit 19
                 }
-                printf( "\tPOWERID: 0x%02X, valid=%d, format=%d(RAO), present=%d\n", ((romRegister[i] & 0x1F0) >> 4), ((romRegister[i] & 0x4) >> 2), ((romRegister[i] & 0x2) >> 1), (romRegister[i] & 0x1) );
+                tabsf( depth );printf( "POWERID: 0x%02X, valid=%d, format=%d(RAO), present=%d\n", ((romRegister[i] & 0x1F0) >> 4), ((romRegister[i] & 0x4) >> 2), ((romRegister[i] & 0x2) >> 1), (romRegister[i] & 0x1) );
 
-                extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );                       //this some how does not work...
+                if( (romRegister[i] & 0x1) )
+                {
+                    tabsf( depth );printf( "Component present: extract!\n");
+                    extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );                       //this some how does not work...
+                }
+                else
+                {
+                    tabsf( depth );printf( "Component not present: skip!\n");
+                }
+
                 printf("\n");
                 subRomCount++;
             }
         }
-        printf( "(found %d entries in ROM table!)\n\n", subRomCount );
+        tabsf( depth );printf( "(found %d entries in ROM table!)\n\n", subRomCount );
     }
     else if( thisComponentInfo.class == 0x9 )   //IHI0029F_coresight_v3_0_architecture_specification.pdf
     {
-        printf( "--> CoreSightComponent:\n" );
+        tabsf( depth );printf( "--> CoreSightComponent:\n" );
         //Addresses 0xF00 to 0xFCC are reserved for use by CoreSight management registers.
     }
     else if( thisComponentInfo.class == 0xE )
     {
-        printf( "--> Generic IP component:\n" );
-        //https://wrongbaud.github.io/posts/stm-xbox-jtag/
+        tabsf( depth );printf( "--> Generic IP component:\n" );
     }
     else
     {
-        printf( "--> not ROM table:\n" );
+        tabsf( depth );printf( "--> not ROM table:\n" );
     }
 }
 
