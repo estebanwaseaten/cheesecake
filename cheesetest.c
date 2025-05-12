@@ -305,6 +305,7 @@ void extractComponent( uint32_t base, uint32_t depth )
     else if( thisComponentInfo.class == 0xE )
     {
         printf( "--> Generic IP component:\n" );
+        //https://wrongbaud.github.io/posts/stm-xbox-jtag/
     }
     else
     {
