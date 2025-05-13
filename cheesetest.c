@@ -63,7 +63,11 @@ typedef struct DCinfo
     uint32_t JEP106cont;
     uint32_t size;
     uint32_t revand;
+    uint32_t custom;
+    uint32_t revision;
 } DCinfo;
+
+
 
 //for SWDB comms
 typedef struct comArray
@@ -167,8 +171,11 @@ void processComponenFields( DCinfo *componentInfo )
 
     // from Peripheral Identification Registers
     componentInfo->size = (componentInfo->PIDR[4] & 0xF0) >> 4;
-
     componentInfo->partNo = componentInfo->PIDR[0] | ((componentInfo->PIDR[1] & 0xF) << 8);     //correct
+
+    componentInfo->revision = (componentInfo->PIDR[2] >> 4) & 0xF;
+    componentInfo->revand = (componentInfo->PIDR[3] >> 4) & 0xF;
+    componentInfo->custom = componentInfo->PIDR[3] & 0xF;
 
     componentInfo->jedec = ( componentInfo->PIDR[2] & 0x8 ) >> 3;
     componentInfo->JEP106id = ((componentInfo->PIDR[1] & 0xF0) >> 4) | ((componentInfo->PIDR[2] & 0x7) << 4);
@@ -285,7 +292,7 @@ void extractComponent( uint32_t base, uint32_t depth )
     comArray localComArray;
 
 
-    tabsf( depth );printf( "ExtractComponent at 0x%X:\n", base );
+    tabsf( depth );printf( "*** ExtractComponent at 0x%X:\n", base );
 
     // FIRST get information about this Component(s)
     int err = extractComponentInfo( base, &thisComponentInfo );
@@ -300,7 +307,9 @@ void extractComponent( uint32_t base, uint32_t depth )
     tabsf( depth );printf( "PartNo 0x%X; jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
     tabsf( depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     tabsf( depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
-    tabsf( depth );printf( "manufacturer: %s\n\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
+    tabsf( depth );printf( "Peripheral OD: 0x%02X%02X%02X%02X%02X\n", thisComponentInfo.PIDR[4] & 0xFF, thisComponentInfo.PIDR[3] & 0xFF, thisComponentInfo.PIDR[2] & 0xFF, thisComponentInfo.PIDR[1] & 0xFF, thisComponentInfo.PIDR[0] & 0xFF );
+    tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
+    tabsf( depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n\n", thisComponentInfo.size, thisComponentInfo.revision, thisComponentInfo.revand );
 
     tabsf( depth );
     if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
@@ -315,7 +324,7 @@ void extractComponent( uint32_t base, uint32_t depth )
     {
         printf( "***** Cortex-M3 ROM table!!\n" );
     }
-    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C4 ) )
+    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C4 ) )    //this does not seem to work
     {
         printf( "***** Cortex-M4 ROM table!!\n" );
     }
@@ -355,7 +364,7 @@ void extractComponent( uint32_t base, uint32_t depth )
             romRegister[i] = comArrayRead( &localComArray, 7 + i );            //[31:12]=OFFSET, [8:4]=POWERID, [2]=poweridvalid, [1]=format, [0]=present
             if( romRegister[i] == 0x0 )
             {
-                i = 32;
+                //i = 32;
             }
             else
             {
@@ -376,12 +385,12 @@ void extractComponent( uint32_t base, uint32_t depth )
 
                 if( (romRegister[i] & 0x1) )
                 {
-                    tabsf( depth );printf( "Component present: extract!\n\n");
-                    extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );                       //this some how does not work...
+                    tabsf( depth );printf( "Component present - extract:\n\n");
+                    extractComponent( nextComponentAddr & 0xFFFFFFFC, depth + 1 );
                 }
                 else
                 {
-                    tabsf( depth );printf( "Component not present: skip!\n");
+                    tabsf( depth );printf( "Component not present - skip!\n");
                 }
 
                 printf("\n");
@@ -392,7 +401,7 @@ void extractComponent( uint32_t base, uint32_t depth )
     }
     else if( thisComponentInfo.class == 0x9 )   //IHI0029F_coresight_v3_0_architecture_specification.pdf
     {
-        tabsf( depth );printf( "--> CoreSightComponent:\n" );       //not sure how to use those...
+        tabsf( depth );printf( "--> CoreSightComponent:\n" );       //not sure how to use those...      Additional regs at 0xF00 to 0xFFF
         //Addresses 0xF00 to 0xFCC are reserved for use by CoreSight management registers.
         //AUTHSTATUS @ 0xFB8
         //CLAIMSET @ 0xFA0 & CLAIMCLR @ 0xFA4
@@ -417,45 +426,31 @@ void extractComponent( uint32_t base, uint32_t depth )
 
 
 
-int extractAccessPort( APinfo *currentAP )
+int extractAccessPort( int i, APinfo *currentAP )
 {
-    printf( "Access Port Information:\n" );
-    printf( "\BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
-    printf( "\tAP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
-    printf( "\tformat: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
-    printf( "\ttype: %d, variant: %d, class: 0x%X, designer: 0x%X, revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer ,currentAP->revision );
+    if( currentAP->class == 0 )
+    {
+        printf( "generic AP #%d (IDR=0x%08X, type=%d):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
+    }
+    else if( (currentAP->class == 0x8) || (currentAP->class == 0x1) )
+    {
+        //class could be 0x8 or 0x1 for mem-ap depending on definition of fields...
+        printf( "MEM-AP #%d (IDR=0x%08X, %s):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
+    }
+    else
+    {
+        printf( "Unknown Access Port Type #%d. Aborting!\n", i );
+    }
 
-    /*    uint8_t     type;
-        uint8_t     variant;
-        uint8_t     res0;       //reserved
-        uint8_t     class;
-        uint16_t    designer;
-        uint8_t     revision;
-
-        uint8_t     format;
-        uint8_t     present;*/
+    printf( "* Access Port Information:\n" );
+    printf( "* BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
+    printf( "* AP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
+    printf( "* format: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
+    printf( "* type: %d, variant: %d, class: 0x%X, designer: 0x%X (%s), revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer, jep106[(currentAP->designer >> 7 ) & 0xF][((currentAP->designer ) & 0x7F)-1]  ,currentAP->revision );
 
     printf( "------------------------------------------------------\n\n");
 
     extractComponent( currentAP->apBASE, 0 );
-
-    printf("\n\n");
-
-    //extractComponent( 0xFFF0F000 );
-/*printf("\n");
-    extractComponent( 0xFFF02000 );
-printf("\n");
-    extractComponent( 0xFFF03000 );
-printf("\n");
-    extractComponent( 0xFFF01000 );
-printf("\n");
-    extractComponent( 0xFFF41000 );
-printf("\n");
-    extractComponent( 0xFFF42000 );*/
-
-    //extractComponent( 0xFFF0F000 ); //same as before???
-    //extractComponent( 0x00200000 ); // THIS crashes the MCU???
-
     return 0;
 }
 
@@ -481,7 +476,7 @@ int detectSystem( void )
         comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x54000000 );        //power up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
         comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
 
-        comArrayAdd( &mainComArray, DP_SELECT_CMD, (APcount << 24) | 0xF0 );                  //selects AP [31:24] = 0x0, bank [7:4] = 0xF
+        comArrayAdd( &mainComArray, DP_SELECT_CMD, (APcount*4 << 24) | 0xF0 );     //NOT SURE ABOUT *4             //selects AP [31:24] = 0x0, bank [7:4] = 0xF
 
         //read ACCESS PORT REGISTERS
         comArrayAdd( &mainComArray, MEMAP_READ0_CMD, 0x0 );
@@ -509,52 +504,63 @@ int detectSystem( void )
             myAccessPorts[APcount].type = myAccessPorts[APcount].apIDR & 0xF;   //** 0x0:jtag 0x1:AMBA AHB3 bus 0x2:AMBA APB2 or APB3 ... C2-229
             myAccessPorts[APcount].variant = ((myAccessPorts[APcount].apIDR & 0xF0) >> 4);
             myAccessPorts[APcount].res0 = ((myAccessPorts[APcount].apIDR & 0x1F00) >> 8);
-            myAccessPorts[APcount].class = ((myAccessPorts[APcount].apIDR & 0x1E000) >> 13);        //** 0b1000 --> MEM-AP
+            myAccessPorts[APcount].class = ((myAccessPorts[APcount].apIDR & 0x1E000) >> 13);        //** 0b1000 --> MEM-AP //sometimes only bit 16 is used for class definition...
             myAccessPorts[APcount].designer = ((myAccessPorts[APcount].apIDR & 0xFFE0000) >> 17);
             myAccessPorts[APcount].revision = ((myAccessPorts[APcount].apIDR & 0xF0000000) >> 28);
             APcount++;
         }
         else
         {
+            printf( "next AP: 0x%08X, 0x%08X, 0x%08X\n", comArrayRead( &mainComArray, 10 ), comArrayRead( &mainComArray, 9 ) & 0xFFFFF000, comArrayRead( &mainComArray, 8 ) );
             done = true;
         }
-
     }
     // here it only prints once :)
     uint32_t dpIDCODE = comArrayRead( &mainComArray, 0 );
 
     //DP
     printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-    printf( "\t--> DP revision/version (0x4=JTAG; 0x2=SW; ...): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
-    printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
 
-    printf( "\t--> DP designer: 0x%X\n", ((dpIDCODE & 0x0FFE) >> 1) );
+    switch( dpIDCODE )
+    {
+        case 0x0BC11477:
+            printf( "* Default Cortex-M0+ Core (uncomfirmed)\n"); //this is not confirmed
+            break;
+        case 0x2BA01477:
+            printf( "* Cortex-M4 Core w. FPU (uncomfirmed)\n");   //this is not confirmed
+            break;
 
-    printf( "\t--> DP partNo (???): 0x%X\n", ((dpIDCODE & 0x0FF00000) >> 20) );
-    printf( "\t--> DP version: 0x%X\n", ((dpIDCODE & 0xF000) >> 12) );
-    //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
+        default:
+            printf( "* Unknown Architecture\n");
+            break;
+    }
+
+    uint32_t dpPartNo = (dpIDCODE >> 12) & 0xFFFF;
+    uint32_t dpVersion = (dpIDCODE >> 28) & 0xF;
+
+    // version=0x4->JTAG-DP version=0x2->SW-DP,  version=0x3->SW-DP     ... these parameters seem to be defined differently amongst versions...
+    // partno=0xBA00->JTAG otherwise???->SW-DP
+    if( dpPartNo == 0xBA00 )         //implies version is 0x0
+    {
+        printf( "* ARM JTAG-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    else if( (dpPartNo == 0xBA10) || (dpPartNo == 0xBA01 ) || (dpPartNo == 0xBA02 ) )
+    {
+        printf( "* ARM SW-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    else        // if this does not fit the older format
+    {
+        printf( "* other DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    printf( "* DP designer: 0x%X (%s)\n", ((dpIDCODE & 0x0FFE) >> 1), jep106[(dpIDCODE >> 8 ) & 0xF][((dpIDCODE >> 1 ) & 0x7F)-1] );
+
 
 
     //APs
-    printf( "\tfound %d Access Port(s)!\n\n", APcount );
-
+    printf( "\nFound %d Access Port(s):\n\n", APcount );
     for (size_t i = 0; i < APcount; i++)
     {
-        if( myAccessPorts[i].class == 8 )
-        {
-            printf( "MEM-AP #%d (IDR=0x%08X, %s):\n", i, myAccessPorts[i].apIDR, ap_types[myAccessPorts[i].type] );
-        }
-        else if( myAccessPorts[i].class == 0 )
-        {
-            printf( "generic AP #%d (IDR=0x%08X, type=%d):\n", i, myAccessPorts[i].apIDR, myAccessPorts[i].type );
-        }
-        else
-        {
-            printf( "AP class error\n" );
-            return -1;
-        }
-
-        extractAccessPort( &myAccessPorts[i] );
+        extractAccessPort( i, &myAccessPorts[i] );
     }
     return 0;
 }
