@@ -26,6 +26,30 @@ static const char * const ap_types[9] = {
 #include "aptypes.inc"
 };
 
+static const char * const arm_partno[0xFFF] = {
+#include "arm_partno.inc"
+};
+
+struct armComponent
+{
+    uint8_t PIDR4;
+    uint8_t PIDR0;
+    uint8_t PIDR1;
+    uint8_t PIDR2;
+    uint8_t PIDR3;
+    uint8_t CIDR0;
+    uint8_t CIDR1;
+    uint8_t CIDR2;
+    uint8_t CIDR3;
+    const char    description[64];
+};
+
+
+struct armComponent arm_comp[0xFF] = {
+#include "arm_dbcomponents.inc"
+};
+
+
 
 //information for access port
 typedef struct APinfo
@@ -66,6 +90,27 @@ typedef struct DCinfo
     uint32_t custom;
     uint32_t revision;
 } DCinfo;
+
+void printARMComponent( DCinfo *info )
+{
+    for (size_t i = 0; i < 0xFF; i++)
+    {
+        if( (arm_comp[i].PIDR4 == info->PIDR[4])
+            && (arm_comp[i].PIDR3 == info->PIDR[3])
+            && (arm_comp[i].PIDR2 == info->PIDR[2])
+            && (arm_comp[i].PIDR1 == info->PIDR[1])
+            && (arm_comp[i].PIDR0 == info->PIDR[0])
+            && (arm_comp[i].CIDR3 == info->CIDR[3])
+            && (arm_comp[i].CIDR2 == info->CIDR[2])
+            && (arm_comp[i].CIDR1 == info->CIDR[1])
+            && (arm_comp[i].CIDR0 == info->CIDR[0]) )
+        {
+            printf( "%s\n", arm_comp[i].description );
+            return;
+        }
+    }
+    printf( "unidentified\n" );
+}
 
 
 
@@ -304,15 +349,15 @@ void extractComponent( uint32_t base, uint32_t depth )
     }
 
     tabsf( depth );printf( "Class 0x%X; Memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
-    tabsf( depth );printf( "PartNo 0x%X; jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
+    tabsf( depth );printf( "PartNo 0x%X (%s); jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, arm_partno[thisComponentInfo.partNo], thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
     tabsf( depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     tabsf( depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
     tabsf( depth );printf( "Peripheral OD: 0x%02X%02X%02X%02X%02X\n", thisComponentInfo.PIDR[4] & 0xFF, thisComponentInfo.PIDR[3] & 0xFF, thisComponentInfo.PIDR[2] & 0xFF, thisComponentInfo.PIDR[1] & 0xFF, thisComponentInfo.PIDR[0] & 0xFF );
     tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
     tabsf( depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n\n", thisComponentInfo.size, thisComponentInfo.revision, thisComponentInfo.revand );
 
-    tabsf( depth );
-    if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
+    tabsf( depth );printf("***** identified as: ");printARMComponent( &thisComponentInfo );
+    /*if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
     {
         printf( "***** Cortex-M0+ ROM table!!\n" );
     }
@@ -331,7 +376,7 @@ void extractComponent( uint32_t base, uint32_t depth )
     else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C8 ) )
     {
         printf( "***** Cortex-M7 ROM table!!\n" );
-    }
+    }*/
 
     // memory Type = 0b1 if system memory is present on the bus (deprecated)
 
