@@ -425,8 +425,15 @@ int extractAccessPort( APinfo *currentAP )
     printf( "\tformat: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
     printf( "\ttype: %d, variant: %d, class: 0x%X, designer: 0x%X, revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer ,currentAP->revision );
 
+    /*    uint8_t     type;
+        uint8_t     variant;
+        uint8_t     res0;       //reserved
+        uint8_t     class;
+        uint16_t    designer;
+        uint8_t     revision;
 
-
+        uint8_t     format;
+        uint8_t     present;*/
 
     printf( "------------------------------------------------------\n\n");
 
@@ -518,21 +525,6 @@ int detectSystem( void )
 
     //DP
     printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-
-    switch( dpIDCODE )
-    {
-        case 0x0BC11477:
-            printf( "default Cortex-M0+ Core\n");
-            break;
-        case 0x2BA01477:
-            printf( "Cortex-M4 Core w. FPU\n");
-            break;
-
-        default:
-            printf( "Unknown Architecture\n");
-            break;
-    }
-
     printf( "\t--> DP revision/version (0x4=JTAG; 0x2=SW; ...): 0x%X\n", ((dpIDCODE & 0xF0000000) >> 28 ) );
     printf( "\t--> DP partNo (0xBA00=JTAG; 0xBA01=SW): 0x%X\n", ((dpIDCODE & 0x0FFFF000) >> 12) );
 
@@ -541,8 +533,6 @@ int detectSystem( void )
     printf( "\t--> DP partNo (???): 0x%X\n", ((dpIDCODE & 0x0FF00000) >> 20) );
     printf( "\t--> DP version: 0x%X\n", ((dpIDCODE & 0xF000) >> 12) );
     //printf( "CTRLSTAT: 0x%08X\n", comArrayRead( &mainComArray, 2 ) );c
-
-
 
 
     //APs
@@ -602,7 +592,7 @@ void read_mcu_id()
     comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0x40015800 );     // STM32L0x3     //   0xE0042000
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
-    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0xE0042000 );
+    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, 0xE0042000 );     // STM32F...
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
     comArrayAdd( &mainComArray, MEMAP_READ3_CMD, 0x0 );
 
