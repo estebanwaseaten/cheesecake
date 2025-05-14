@@ -109,7 +109,14 @@ void printARMComponent( DCinfo *info )
             return;
         }
     }
-    printf( "unidentified\n" );
+    if ( info->class == 0x1) //ROM table
+    {
+        printf( "unidentified ROM table (implementation dependent)\n" );
+    }
+    else
+    {
+        printf( "unidentified\n" );
+    }
 }
 
 
