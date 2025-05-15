@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.0.0)
 #CMAKE_SOURCE_DIR --> top level CMakeLists.txt
 #CMAKE_CURRENT_SOURCE_DIR --> current CMakeLists.txt (add_subdirectory() call) should be similar to PROJECT_SOURCE_DIR
 
-project(cheesetest)
+project(cheesecake)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -13,7 +13,7 @@ add_compile_options(-pg ) # -Wall -Wextra
 
 
 set(SOURCE_LIST
-	"cheesetest.c"
+	"cheesecake.c"
 )
 
 #defines the target:

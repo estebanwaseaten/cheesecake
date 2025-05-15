@@ -6,7 +6,6 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include "SWDPI_base.h"         //some constants
 #include "cheese_registers.h"
 
 // a lot of sequences in openocd/src/jtag/swd.h
@@ -36,7 +35,7 @@ static const char * const arm_compClass[0xFF] = {
 
 struct armComponent
 {
-    uint32_t    ID;        // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
+    uint32_t    ID;                 // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
     uint8_t     componentClass;     // ROM: 0x01, SCS: 0x02, DWT: 0x03, BPU: 0x04...
     const char  description[64];
 };
@@ -44,8 +43,6 @@ struct armComponent
 struct armComponent arm_comp[0xFF] = {
 #include "arm_dbcomponents.inc"
 };
-
-
 
 //information for access port
 typedef struct APinfo
@@ -67,13 +64,13 @@ typedef struct APinfo
 } APinfo;
 
 //information for debug component
+// registers PIDR0-7 and CIDR0-3 are always present and should identify the component typer or class (ROM, SCS, etc...)
 typedef struct DCinfo
 {
     uint32_t CIDR[4];
     uint32_t PIDR[8];       //5-7 are reserved
 
-    uint32_t compactCIDR;
-    uint64_t compactPIDR;
+    uint32_t PCIDR;
 
     uint32_t myclass;
 
@@ -87,6 +84,8 @@ typedef struct DCinfo
     uint32_t revand;
     uint32_t custom;
     uint32_t revision;
+
+    uint32_t cpuID;
 } DCinfo;
 
 
@@ -94,12 +93,20 @@ typedef struct DCinfo
 void processARMComponentClass( DCinfo *info )
 {
 
-
-
-    switch( info-> myclass )
+    switch( info->myclass )
     {
         case 0x02:  //SCS       System Control Block: offset 0xD00; Debug Regs offset: 0xDF0
-            //read CPUID
+            //The SCS is a memory-mapped 4KB address space that provides 32-bit registers for configuration, status reporting and control.
+            //offsets: described in ARM6 manual
+            //0x000 - 0x00F aux ctrl regs
+            //0xD00 - 0xD8F System Control Block
+            //0xF90 - 0xFCF implementation defined
+            //0x010 - 0x0FF systick
+            //0x100 - 0xCFF external interupt controller
+            //0xDF0 - 0xEFF debug ctrl & conf
+            //0xD90 - 0xDEF optional MPU
+            info->cpuID = 0;
+
 
             break;
         default:
@@ -112,16 +119,13 @@ uint8_t processARMComponent( DCinfo *info )   // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
     for (size_t i = 0; i < 0xFF; i++)
     {
         //printf( "0x%08X 0x%02X 0x%02X 0x%02X 0x%02X \n", arm_comp[i].ID, (arm_comp[i].ID >> 24) & 0xFF, (arm_comp[i].ID >> 16) & 0xFF, (arm_comp[i].ID >> 8) & 0xFF, (arm_comp[i].ID >> 0) & 0xFF );
-        if( (info->PIDR[0] == ((arm_comp[i].ID >> 24) & 0xFF)) &&
-            (info->PIDR[1] == ((arm_comp[i].ID >> 16) & 0xFF)) &&
-            (info->PIDR[2] == ((arm_comp[i].ID >> 8) & 0xFF)) &&
-            (info->CIDR[1] == ((arm_comp[i].ID >> 0) & 0xFF)) )
+        if( info->PCIDR == arm_comp[i].ID  )
         {
             printf( "%s, class: %s\n", arm_comp[i].description, arm_compClass[arm_comp[i].componentClass] );
             info->myclass =  arm_compClass[arm_comp[i].componentClass];
 
             //should we process the class here??
-            processARMComponentClass( DCinfo *info );
+            processARMComponentClass( info );
             return info->myclass;
         }
     }
@@ -189,6 +193,18 @@ int comArrayAdd( comArray *myComArray, uint32_t cmd, uint32_t val )
     return myComArray->filling;
 }
 
+int comArrayPrep( comArray *myComArray, uint32_t bank, uint32_t base )
+{
+    comArrayClear( myComArray );
+
+    comArrayAdd( myComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
+    comArrayAdd( myComArray, DP_CTRLSTAT_R_CMD, 0x0 );
+    comArrayAdd( myComArray, DP_SELECT_CMD, bank );
+    comArrayAdd( myComArray, MEMAP_WRITE0_CMD, 0x22000012 );               // CSW
+    comArrayAdd( myComArray, MEMAP_WRITE1_CMD, base );             // TAR, set offset 0xFCC to memtype
+}
+
 uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index starts at 0
 {
     if( (myComArray == NULL) || (myComArray->initDone == 0) )
@@ -248,18 +264,11 @@ void processComponenFields( DCinfo *componentInfo )
     componentInfo->JEP106id = ((componentInfo->PIDR[1] & 0xF0) >> 4) | ((componentInfo->PIDR[2] & 0x7) << 4);
     componentInfo->JEP106cont = componentInfo->PIDR[4] & 0xF;
 
-    componentInfo->compactCIDR = (componentInfo->CIDR[0] & 0xFF) << 0;
-    componentInfo->compactCIDR |= (componentInfo->CIDR[1] & 0xFF) << 8;
-    componentInfo->compactCIDR |= (componentInfo->CIDR[2] & 0xFF) << 16;
-    componentInfo->compactCIDR |= (componentInfo->CIDR[3] & 0xFF) << 24;
-
-    componentInfo->compactPIDR = (componentInfo->PIDR[4] & 0xFF);//
-    componentInfo->compactPIDR <<= 32;
-    componentInfo->compactPIDR |= (componentInfo->PIDR[0] & 0xFF) << 0;
-    componentInfo->compactPIDR |= (componentInfo->PIDR[1] & 0xFF) << 8;
-    componentInfo->compactPIDR |= (componentInfo->PIDR[2] & 0xFF) << 16;
-    componentInfo->compactPIDR |= (componentInfo->PIDR[3] & 0xFF) << 24;
-
+    //compact single word containing hopefully all the important bits of information
+    componentInfo->PCIDR = (componentInfo->PIDR[0] & 0xFF) << 24;
+    componentInfo->PCIDR |= (componentInfo->PIDR[1] & 0xFF) << 16;
+    componentInfo->PCIDR |= (componentInfo->PIDR[2] & 0xFF) << 8;
+    componentInfo->PCIDR |= (componentInfo->CIDR[1] & 0xFF) << 0;
 }
 
 // * IHI0031G_debug_interface_v5_2_architecture_specification.pdf
@@ -278,14 +287,7 @@ void processComponenFields( DCinfo *componentInfo )
 int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
 {
     // IHI0074E_debug_interface_v6_0_architecture_specification.pdf
-    comArrayClear( &mainComArray );
-
-    comArrayAdd( &mainComArray, DP_IDCODE_CMD, 0x0 );
-    comArrayAdd( &mainComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
-    comArrayAdd( &mainComArray, DP_CTRLSTAT_R_CMD, 0x0 );
-    comArrayAdd( &mainComArray, DP_SELECT_CMD, 0x00 );
-    comArrayAdd( &mainComArray, MEMAP_WRITE0_CMD, 0x22000012 );               // CSW
-    comArrayAdd( &mainComArray, MEMAP_WRITE1_CMD, base + 0xFCC );             // TAR, set offset 0xFD0 to CIDR0
+    comArrayPrep( &mainComArray, 0x00, base + 0xFCC ); //
     // Any ROM Table must implement a set of Component and Peripheral ID Registers, that start at offset 0xFD0
     //0xF00-0xFFC are the CoreSight management registers - common to all CoreSight Components
     //0xFCC -> memtype
@@ -412,14 +414,8 @@ void extractComponent( uint32_t base, uint32_t depth )
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
         tabsf( depth );printf( "== ROM table content:\n\n" );       //-->> READ ALL THE ADDRESSES:
-        comArrayClear( &localComArray );
 
-        comArrayAdd( &localComArray, DP_IDCODE_CMD, 0x0 );
-        comArrayAdd( &localComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );
-        comArrayAdd( &localComArray, DP_CTRLSTAT_R_CMD, 0x0 );
-        comArrayAdd( &localComArray, DP_SELECT_CMD, 0x00 );
-        comArrayAdd( &localComArray, MEMAP_WRITE0_CMD, 0x22000012 );
-        comArrayAdd( &localComArray, MEMAP_WRITE1_CMD, base);               //is fine for base access port/component
+        comArrayPrep( &localComArray, 0x00, base ); //
         comArrayAdd( &localComArray, MEMAP_READ3_CMD, 0x0 );                // 0x000 DO NOT ALTERNATE WRITES AND READS TO DRW
 
         for( int i = 0; i < 32; i++ )

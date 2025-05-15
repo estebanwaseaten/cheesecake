@@ -8,9 +8,13 @@
 #ifndef REGISTERS_H
 #define REGISTERS_H
 
+// Data is sent and received LSB first
 // LSB means we have to flip the order (read bits from right to left)
-//cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1 OTHER WAY AROUND!!!
-// CMDS for DEBUG PORT REGS:
+
+// SWD commands have the following 8 bits according to the manuals:
+// cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1           but the OTHER WAY AROUND!!!
+
+// CMDS for accessing the DEBUG PORT (DP) registers:
 #define DP_ABORT_CMD    0x81      // 0b10000001
 #define DP_IDCODE_CMD   0xA5      // 0b10100101
                                      // 10pyyra1
@@ -25,8 +29,6 @@
 
 #define DP_READBUF_CMD  0xBD          // 0b10111101
 #define DP_ROUTESEL_CMD 0x99            //optional/undefined
-
-
 
 
 //DP_ABORT

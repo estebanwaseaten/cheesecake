@@ -1,4 +1,4 @@
 #!/bin/bash
 
 cmake -S . -B build
-cmake --build ./build --target cheesetest
+cmake --build ./build --target cheesecake
