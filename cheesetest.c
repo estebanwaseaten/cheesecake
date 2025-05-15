@@ -6,12 +6,12 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-#include "SWDPI_base.h"
-#include "registers.h"
+#include "SWDPI_base.h"         //some constants
+#include "cheese_registers.h"
 
 // a lot of sequences in openocd/src/jtag/swd.h
 
-//for comparing:
+//for comparing hex:
 // hexyl
 // xxd -
 // vbindiff
@@ -23,27 +23,23 @@ static const char * const jep106[][126] = {
 };
 
 static const char * const ap_types[9] = {
-#include "aptypes.inc"
+#include "arm_aptypes.inc"
 };
 
 static const char * const arm_partno[0xFFF] = {
 #include "arm_partno.inc"
 };
 
-struct armComponent
-{
-    uint8_t PIDR4;
-    uint8_t PIDR0;
-    uint8_t PIDR1;
-    uint8_t PIDR2;
-    uint8_t PIDR3;
-    uint8_t CIDR0;
-    uint8_t CIDR1;
-    uint8_t CIDR2;
-    uint8_t CIDR3;
-    const char    description[64];
+static const char * const arm_compClass[0xFF] = {
+#include "arm_compclass.inc"
 };
 
+struct armComponent
+{
+    uint32_t    ID;        // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
+    uint8_t     componentClass;     // ROM: 0x01, SCS: 0x02, DWT: 0x03, BPU: 0x04...
+    const char  description[64];
+};
 
 struct armComponent arm_comp[0xFF] = {
 #include "arm_dbcomponents.inc"
@@ -79,6 +75,8 @@ typedef struct DCinfo
     uint32_t compactCIDR;
     uint64_t compactPIDR;
 
+    uint32_t myclass;
+
     uint32_t class;
     uint32_t memType;       //could probably reduce size of these variables...
     uint32_t partNo;
@@ -91,22 +89,40 @@ typedef struct DCinfo
     uint32_t revision;
 } DCinfo;
 
-void printARMComponent( DCinfo *info )
+
+//this would be beautiful in c++ with inheritance
+void processARMComponentClass( DCinfo *info )
+{
+
+
+
+    switch( info-> myclass )
+    {
+        case 0x02:  //SCS       System Control Block: offset 0xD00; Debug Regs offset: 0xDF0
+            //read CPUID
+
+            break;
+        default:
+            break;
+    }
+}
+
+uint8_t processARMComponent( DCinfo *info )   // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
 {
     for (size_t i = 0; i < 0xFF; i++)
     {
-        if( (arm_comp[i].PIDR4 == info->PIDR[4])
-            && (arm_comp[i].PIDR3 == info->PIDR[3])
-            && (arm_comp[i].PIDR2 == info->PIDR[2])
-            && (arm_comp[i].PIDR1 == info->PIDR[1])
-            && (arm_comp[i].PIDR0 == info->PIDR[0])
-            && (arm_comp[i].CIDR3 == info->CIDR[3])
-            && (arm_comp[i].CIDR2 == info->CIDR[2])
-            && (arm_comp[i].CIDR1 == info->CIDR[1])
-            && (arm_comp[i].CIDR0 == info->CIDR[0]) )
+        //printf( "0x%08X 0x%02X 0x%02X 0x%02X 0x%02X \n", arm_comp[i].ID, (arm_comp[i].ID >> 24) & 0xFF, (arm_comp[i].ID >> 16) & 0xFF, (arm_comp[i].ID >> 8) & 0xFF, (arm_comp[i].ID >> 0) & 0xFF );
+        if( (info->PIDR[0] == ((arm_comp[i].ID >> 24) & 0xFF)) &&
+            (info->PIDR[1] == ((arm_comp[i].ID >> 16) & 0xFF)) &&
+            (info->PIDR[2] == ((arm_comp[i].ID >> 8) & 0xFF)) &&
+            (info->CIDR[1] == ((arm_comp[i].ID >> 0) & 0xFF)) )
         {
-            printf( "%s\n", arm_comp[i].description );
-            return;
+            printf( "%s, class: %s\n", arm_comp[i].description, arm_compClass[arm_comp[i].componentClass] );
+            info->myclass =  arm_compClass[arm_comp[i].componentClass];
+
+            //should we process the class here??
+            processARMComponentClass( DCinfo *info );
+            return info->myclass;
         }
     }
     if ( info->class == 0x1) //ROM table
@@ -117,9 +133,8 @@ void printARMComponent( DCinfo *info )
     {
         printf( "unidentified\n" );
     }
+    return 0x0;
 }
-
-
 
 //for SWDB comms
 typedef struct comArray
@@ -363,7 +378,12 @@ void extractComponent( uint32_t base, uint32_t depth )
     tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
     tabsf( depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n\n", thisComponentInfo.size, thisComponentInfo.revision, thisComponentInfo.revand );
 
-    tabsf( depth );printf("***** identified as: ");printARMComponent( &thisComponentInfo );
+    uint8_t thisComponentClass;
+    tabsf( depth );printf("***** identified as: "); thisComponentClass = processARMComponent( &thisComponentInfo );
+
+
+
+
     /*if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
     {
         printf( "***** Cortex-M0+ ROM table!!\n" );
