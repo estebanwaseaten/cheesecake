@@ -181,6 +181,7 @@ void SWDGPIOBBD_command( uint8_t cmd )
    {
        SWDGPIOBBD_cycleWrite( cmd & (1 << i));		//LSB first
    }
+
 }
 
 void SWDGPIOBBD_print_command( uint8_t cmd )
@@ -253,6 +254,10 @@ int SWDGPIOBBD_sendData( uint32_t *data )
 	   parityCount += bitWrite;
    }
    SWDGPIOBBD_cycleWrite( parityCount & 0x1 );	//parity bit - 1 for odd
+
+   // according to the STM stm32f303 reference manual after sending data one should add two low cycles... it seemed to work without it, but maybe its important
+ //  SWDGPIOBBD_cycleWrite( 0 );
+ //  SWDGPIOBBD_cycleWrite( 0 );
 
 	return 0;
 }

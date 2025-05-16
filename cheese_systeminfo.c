@@ -53,10 +53,11 @@ int detectSystem( void )
 
     comArrayInit( &infoComArray );
 
+    printf( "scanning for access points: \n");
     while( !done && (APcount < 10 ))
     {
         int nextIndex = comArray_prepAPaccess( &infoComArray, APcount*4, 0xF );        //NOT SURE ABOUT *4         //selects AP and AP bank
-        printf("nextIndex: %d\n", nextIndex);
+        //printf("nextIndex: %d\n", nextIndex);
 
         //read ACCESS PORT REGISTERS
         comArrayAdd( &infoComArray, AP_READ0_CMD, 0x0 );                        //5+0
@@ -139,7 +140,7 @@ int detectSystem( void )
 
 
 
-//    read_mcu_id();
+   //read_mcu_id();
 
 
 
@@ -315,7 +316,7 @@ void tabsf( uint32_t depth )
 void extractComponent( uint32_t base, uint32_t depth )
 {
     DCinfo thisComponentInfo;
-    comArray localComArray;
+
 
 
     tabsf( depth );printf( "*** ExtractComponent at 0x%X:\n", base );
@@ -333,6 +334,13 @@ void extractComponent( uint32_t base, uint32_t depth )
     tabsf( depth );printf( "PartNo 0x%X (%s); jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponentInfo.partNo, arm_partno[thisComponentInfo.partNo], thisComponentInfo.jedec, thisComponentInfo.JEP106id, thisComponentInfo.JEP106cont );
     tabsf( depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     tabsf( depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
+
+    if( (thisComponentInfo.CIDR[0] != 0xD) || (thisComponentInfo.CIDR[2] != 0x5) || (thisComponentInfo.CIDR[3] != 0xB1) )
+    {
+        printf("Component is problematic\n" );
+        return;
+    }
+
     tabsf( depth );printf( "Peripheral OD: 0x%02X%02X%02X%02X%02X\n", thisComponentInfo.PIDR[4] & 0xFF, thisComponentInfo.PIDR[3] & 0xFF, thisComponentInfo.PIDR[2] & 0xFF, thisComponentInfo.PIDR[1] & 0xFF, thisComponentInfo.PIDR[0] & 0xFF );
     tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
     tabsf( depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n\n", thisComponentInfo.size, thisComponentInfo.revision, thisComponentInfo.revand );
@@ -340,39 +348,14 @@ void extractComponent( uint32_t base, uint32_t depth )
     uint8_t thisComponentClass;
     tabsf( depth );printf("***** identified as: "); thisComponentClass = processARMComponent( &thisComponentInfo );
 
-
-
-
-    /*if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C0 ) )
-    {
-        printf( "***** Cortex-M0+ ROM table!!\n" );
-    }
-    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04002BB470 ) )
-    {
-        printf( "***** Cortex-M1 ROM table!!\n" );
-    }
-    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x0 ) )
-    {
-        printf( "***** Cortex-M3 ROM table!!\n" );
-    }
-    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C4 ) )    //this does not seem to work
-    {
-        printf( "***** Cortex-M4 ROM table!!\n" );
-    }
-    else if( (thisComponentInfo.compactCIDR == 0xB105100D) && (thisComponentInfo.compactPIDR == 0x04000BB4C8 ) )
-    {
-        printf( "***** Cortex-M7 ROM table!!\n" );
-    }*/
-
-    // memory Type = 0b1 if system memory is present on the bus (deprecated)
-
+    comArray localComArray;
     comArrayInit( &localComArray );
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
         tabsf( depth );printf( "== ROM table content:\n\n" );       //-->> READ ALL THE ADDRESSES:
 
-        comArray_prepMemAccess( &localComArray, 0x00, base ); //
+        int nextIndex = comArray_prepMemAccess( &localComArray, 0x00, base ); //
         comArrayAdd( &localComArray, AP_READ3_CMD, 0x0 );                // 0x000 DO NOT ALTERNATE WRITES AND READS TO DRW
 
         for( int i = 0; i < 32; i++ )
@@ -386,7 +369,7 @@ void extractComponent( uint32_t base, uint32_t depth )
 
         for( int i = 0; i < 32; i++ )
         {
-            romRegister[i] = comArrayRead( &localComArray, 7 + i );            //[31:12]=OFFSET, [8:4]=POWERID, [2]=poweridvalid, [1]=format, [0]=present
+            romRegister[i] = comArrayRead( &localComArray, nextIndex + 1 + i );            //[31:12]=OFFSET, [8:4]=POWERID, [2]=poweridvalid, [1]=format, [0]=present
             if( romRegister[i] == 0x0 )
             {
                 //i = 32;
@@ -398,7 +381,7 @@ void extractComponent( uint32_t base, uint32_t depth )
                 uint32_t nextComponentAddr;
                 if( (romRegister[i] >> 31) == 1 )    //negative    (most significant bit true -> negative)
                 {
-                    nextComponentAddr = base - ((~romRegister[i] & 0xFFFFF000) + 0x1000);     //two's complement... apparently
+                    nextComponentAddr = base - ((~romRegister[i] & 0xFFFFF000) + 0x1000);     //two's complement (bitshifted 12 to the left)... apparently
                     tabsf( depth );printf( "---> offset: -0x%08X addr: 0x%08X\n", ~(romRegister[i] & 0xFFFFF000) + 0x1000, nextComponentAddr );
                 }
                 else
