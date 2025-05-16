@@ -63,7 +63,7 @@ int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t acc
 
     comArrayAdd( myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
     comArrayAdd( myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
-//    comArrayAdd( myComArray, DP_ABORT_CMD, 0x1E );                      //clean sticky errors
+    comArrayAdd( myComArray, DP_ABORT_CMD, 0x1E );                      //clean sticky errors
 
     //power up system and debug system:
     comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x54000000 );           //system power-up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000

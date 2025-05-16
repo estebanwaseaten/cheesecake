@@ -337,7 +337,7 @@ void extractComponent( uint32_t base, uint32_t depth )
 
     if( (thisComponentInfo.CIDR[0] != 0xD) || (thisComponentInfo.CIDR[2] != 0x5) || (thisComponentInfo.CIDR[3] != 0xB1) )
     {
-        printf("Component is problematic\n" );
+        printf("Component is invalid...\n" );
         return;
     }
 
