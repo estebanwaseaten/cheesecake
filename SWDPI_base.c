@@ -34,7 +34,7 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
 //https://qcentlabs.com/posts/swd_banger/
-// clock idles high.
+// clock idles high. --> corrected to LOW for now
 // bit is read at the beginning of the low-high clock cycle (at the initial falling clock)
 // bit it written also at the beginning o fthe clock cycle, so that it has defined value at the rising clock in the middle of the cycle.
 // pins can always pull down or none... it does not seem to matter... leave at none for now...\
@@ -59,12 +59,6 @@ if (!IS_ERR(task)) {
 }
 */
 
-
-// IDEA:
-// 1. writing commands with data ( 32bits cmd + 32bits data ) into cmd buffer (maybe already check for validity)
-// 2. upon read, all commands are processed and stored in a buffer. The buffer can be read (32bits status + 32 bits data) until empty. Empty buffer reads IDCODe.
-// cmd buffer is uint64_t[128] maybe?
-// write of 0x0 resets com and clears buffer
 
 uint8_t SWDGPIOBBD_lock;
 

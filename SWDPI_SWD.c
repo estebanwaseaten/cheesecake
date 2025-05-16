@@ -59,7 +59,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 			SWDGPIOBBD_receiveData( data );
 			SWDGPIOBBD_cycleTurnaround2Write();
 
-			pr_info("read operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
+			//pr_info("read operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
 		}
 		else
 		{
@@ -78,7 +78,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 			SWDGPIOBBD_cycleTurnaround2Write();
 			SWDGPIOBBD_sendData( data );	//write data!!!
 
-			pr_info("write operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
+			//pr_info("write operation: 0x%08x (%d time(s)) ack: %d\n", lowLevelCmd, abortcounter, *ack);
 		}
 		//pr_info("SWDGPIOBBD_transfer() after cmd: %x data %x", (uint32_t)lowLevelCmd, *data );
 	}
@@ -235,14 +235,13 @@ int SWDGPIOBBD_receiveData( uint32_t *data )
    }
 
    pr_warn("parity mismatch!");
-   return -1;	//parity mismatch
+   return -1;
 }
 
 //LSB first
 int SWDGPIOBBD_sendData( uint32_t *data )
 {
    uint32_t	bitWrite;
-   uint32_t datareply = 0;
    uint32_t parityCount = 0;
 
    for (int i = 0; i < 32; i++)
@@ -269,108 +268,56 @@ int SWDGPIOBBD_sendData( uint32_t *data )
 //https://developer.arm.com/documentation/dui0499/d/ARM-DSTREAM-Target-Interface-Connections/SWD-timing-requirements
 uint8_t SWDGPIOBBD_cycleRead(void)
 {
-   /*SWDPI_gpio_interface.unsetPin( clockPin );
-   uint8_t value = SWDPI_gpio_interface.readPin( dataPin );
-
-   udelay(half_period_us);
-   SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);*/
-
-
-	//SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
-
-	//programmer reads just before rising edge
-	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );	//or just before ...
-
-	SWDPI_gpio_interface.setPin( clockPin );
-
-	udelay(half_period_us);
+	SWDPI_gpio_interface.setPin( clockPin );			//first high, then low
+    udelay(half_period_us);
 
 	SWDPI_gpio_interface.unsetPin( clockPin );
+
+	udelay(half_period_us);
+
+	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );	//or just before ...
+
+	//udelay(half_period_us);
 
    	return (value != 0);
 }
 
 void SWDGPIOBBD_cycleWrite( uint8_t bit )
 {
-   /*if( bit == 0 )
-       SWDPI_gpio_interface.unsetPin( dataPin );
-   else
-       SWDPI_gpio_interface.setPin( dataPin );
-   SWDPI_gpio_interface.unsetPin( clockPin );
-
-   udelay(half_period_us);
-   SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);*/
+	SWDPI_gpio_interface.setPin( clockPin );			//first high, then low
+  	udelay(half_period_us);
 
 	if( bit == 0 )
    		SWDPI_gpio_interface.unsetPin( dataPin );
    	else
    		SWDPI_gpio_interface.setPin( dataPin );
 
-	//SWDPI_gpio_interface.setPin( clockPin );
-
-	udelay(half_period_us);
-
-	SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
-
 	SWDPI_gpio_interface.unsetPin( clockPin );
+	udelay(half_period_us);
 }
 
 void SWDGPIOBBD_cycleTurnaround2Read(void)
 {
-   /*//unset clock pin
-   SWDPI_gpio_interface.unsetPin( dataPin );		//do not drive
-   SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
-   SWDPI_gpio_interface.setPinInput( dataPin );										//is this working??
-
-//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
-//	SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );	//NONE
-
-   //none---> reply is full height, DOWN---> reply is half.
-   udelay(half_period_us);
-
-   //set clock pin
-   SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);*/
+	SWDPI_gpio_interface.setPin( clockPin );
 
 	SWDPI_gpio_interface.unsetPin( dataPin );
 	SWDPI_gpio_interface.setPinInput( dataPin );
-    //SWDPI_gpio_interface.setPin( clockPin );
 
-	udelay(half_period_us);
-
-	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
 
 	SWDPI_gpio_interface.unsetPin( clockPin );
-
+	udelay(half_period_us);
 }
 
 void SWDGPIOBBD_cycleTurnaround2Write(void)
 {
-   /*//unset clock pin
-   SWDPI_gpio_interface.unsetPin( dataPin );
-   SWDPI_gpio_interface.unsetPin( clockPin );    //config 2 read:
-   SWDPI_gpio_interface.setPinOutput( dataPin );
+    SWDPI_gpio_interface.setPin( clockPin );
 
-//    SWDPI_gpio_interface.configPinPull( dataPin, GPIO_PULL_DOWN );     //not sure what is correct here
-   udelay(half_period_us);
-
-   //set clock pin
-   SWDPI_gpio_interface.setPin( clockPin );
-   udelay(half_period_us);*/
 	SWDPI_gpio_interface.unsetPin( dataPin );
 	SWDPI_gpio_interface.setPinOutput( dataPin );
-	//SWDPI_gpio_interface.setPin( clockPin );
-	udelay(half_period_us);
 
-	SWDPI_gpio_interface.setPin( clockPin );
 	udelay(half_period_us);
 
 	SWDPI_gpio_interface.unsetPin( clockPin );
-
-
+	udelay(half_period_us);
 }

@@ -57,7 +57,7 @@ int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t acc
 {
     uint32_t selectRegister = (((uint32_t)accessPort) << 24) | (((uint32_t)accessPortBank) << 4);
 
-    printf("comArray_prepAPaccess(): selectRegister: 0x%08X\n", selectRegister);
+    //printf("comArray_prepAPaccess(): selectRegister: 0x%08X\n", selectRegister);
     //clear com array
     comArrayClear( myComArray );
 
@@ -66,7 +66,7 @@ int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t acc
     comArrayAdd( myComArray, DP_ABORT_CMD, 0x1E );                      //clean sticky errors
 
     //power up system and debug system:
-    comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x54000000 );           //system power-up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
+    comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );           //system power-up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
 
     //select Access Port and its Memory Bank
     return comArrayAdd( myComArray, DP_SELECT_CMD, selectRegister );
@@ -81,7 +81,9 @@ int comArray_prepMemAccess( comArray *myComArray, uint8_t accessPort, uint32_t m
     comArrayAdd( myComArray, AP_WRITE0_CMD, 0x22000012 );               // CSW --> auto increment addr
 
     //write starting Transfer Address Register (TAR):
-    return comArrayAdd( myComArray, AP_WRITE1_CMD, memBase );
+    int reply = comArrayAdd( myComArray, AP_WRITE1_CMD, memBase );
+
+    return reply;
 }
 
 int comArrayAdd( comArray *myComArray, uint32_t cmd, uint32_t val )
@@ -121,6 +123,7 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index star
 
 int comArrayTransfer( comArray *myComArray )
 {
+    //printf("transfer!\n");
     int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
     write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes
     read( SWDPIfile, myComArray->replyArray32,  myComArray->filling*2*4 );

@@ -52,8 +52,8 @@ int initRaspi4( void )
     printk( "memory mapped %x", *gpio4Mem );
 
     configPinPullRaspi4( clockPin, GPIO_PULL_DOWN );       //this worked on the pi5, maybe we have to adjust when we read the data (at the very beginning of the clock or in the center...)
-    configPinPullRaspi4( dataPin, GPIO_PULL_DOWN );
-
+    configPinPullRaspi4( dataPin, GPIO_PULL_DOWN );           // PULL UP recommende by ARM according to rm0316-stm32f303xbcde-stm32f303x68-stm32f328x8-stm32f358xc-stm32f398xe-advanced-armbased-mcus-stmicroelectronics.pdf
+                                                            //NEEDS TO PULL DOWN OTHERWISE TIMING DOES NOT WORK
     setPinOutputRaspi4( clockPin );
     setPinOutputRaspi4( dataPin );
 

@@ -68,7 +68,7 @@ int detectSystem( void )
         comArrayTransfer( &infoComArray );
 
         myAccessPorts[APcount].apIDR = comArrayRead( &infoComArray, nextIndex + 4 );        //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
-
+        printf( "AP-IDR: 0x%08X\n", myAccessPorts[APcount].apIDR);
         if( myAccessPorts[APcount].apIDR != 0 ) //check IDCODE of AP --> AP is present if IDCODE nonzero
         {
             myAccessPorts[APcount].apBASE = comArrayRead( &infoComArray, nextIndex + 3 ) & 0xFFFFF000;      // 32-bit: [31:12] contain BASEADDR[31:12]
@@ -84,14 +84,18 @@ int detectSystem( void )
             myAccessPorts[APcount].class = ((myAccessPorts[APcount].apIDR & 0x1E000) >> 13);        //** 0b1000 --> MEM-AP //sometimes only bit 16 is used for class definition...
             myAccessPorts[APcount].designer = ((myAccessPorts[APcount].apIDR & 0xFFE0000) >> 17);
             myAccessPorts[APcount].revision = ((myAccessPorts[APcount].apIDR & 0xF0000000) >> 28);
+
             APcount++;
         }
         else
         {
             // /printf( "next AP: 0x%08X, 0x%08X, 0x%08X\n", comArrayRead( &infoComArray, 10 ), comArrayRead( &infoComArray, 9 ) & 0xFFFFF000, comArrayRead( &infoComArray, 8 ) );
             done = true;
+            //APcount++;
         }
+
     }
+
 
 //*********************** info about debug port
     // here it only prints once :)
@@ -131,6 +135,13 @@ int detectSystem( void )
         printf( "* other DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
     }
     printf( "* DP designer: 0x%X (%s)\n", ((dpIDCODE & 0x0FFE) >> 1), jep106[(dpIDCODE >> 8 ) & 0xF][((dpIDCODE >> 1 ) & 0x7F)-1] );
+
+
+
+
+//    read_mcu_id();
+
+
 
 
 //*************** examine access ports:
@@ -465,6 +476,7 @@ int extractAccessPort( int i, APinfo *currentAP )
     printf( "------------------------------------------------------\n\n");
 
     extractComponent( currentAP->apBASE, 0 );
+    //extractComponent( currentAP->apBASE + 4, 0 );
     return 0;
 }
 
