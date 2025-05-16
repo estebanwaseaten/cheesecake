@@ -5,8 +5,8 @@
 * Copyright (C) 2025 Daniel Wegkamp
 */
 
-#ifndef REGISTERS_H
-#define REGISTERS_H
+#ifndef CHEESE_REGISTERS_H
+#define CHEESE_REGISTERS_H
 
 // Data is sent and received LSB first
 // LSB means we have to flip the order (read bits from right to left)
@@ -100,15 +100,15 @@
 
 //cmds: 1 - AP(1)/DP(0) - R(1)/W(0) - A[2] - A[3] - P(last4) - 0 - 1
 
-#define MEMAP_READ0_CMD     0x87    // 0b10000111
-#define MEMAP_READ1_CMD     0xAF    // 0b10101111
-#define MEMAP_READ2_CMD     0xB7    // 0b10110111
-#define MEMAP_READ3_CMD     0x9F    // 0b10011111
+#define AP_READ0_CMD     0x87    // 0b10000111
+#define AP_READ1_CMD     0xAF    // 0b10101111
+#define AP_READ2_CMD     0xB7    // 0b10110111
+#define AP_READ3_CMD     0x9F    // 0b10011111
 
-#define MEMAP_WRITE0_CMD    0xA3    // 0b10100011
-#define MEMAP_WRITE1_CMD    0x8B    // 0b10001011
-#define MEMAP_WRITE2_CMD    0x93    // 0b10010011
-#define MEMAP_WRITE3_CMD    0xBB    // 0b10111011
+#define AP_WRITE0_CMD    0xA3    // 0b10100011
+#define AP_WRITE1_CMD    0x8B    // 0b10001011
+#define AP_WRITE2_CMD    0x93    // 0b10010011
+#define AP_WRITE3_CMD    0xBB    // 0b10111011
 
 
 #endif

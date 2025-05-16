@@ -1,0 +1,232 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+*
+*
+* Copyright (C) 2025 Daniel Wegkamp
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "cheese_memoryaccess.h"
+#include "cheese_registers.h"
+#include "cheese_comSWD.h"
+
+
+
+
+
+void fileprint( char *path, int wordsToRead )
+{
+    //binary dump:
+    printf( "\ndump binary file:\n" );
+
+    FILE *binFilePtr = NULL;
+
+    binFilePtr = fopen( path, "rb");
+    if( binFilePtr == NULL )
+    {
+        printf( "file does not exist!\n" );
+    }
+
+    //read complete words only
+    uint8_t byteBuffer[4];
+    uint32_t *wordBuffer = (uint32_t*)byteBuffer;
+    int freadReply;
+
+    bool done = false;
+    printf( "words to read: %d\n", wordsToRead);
+    int wordsRead = 0;
+
+    if( wordsToRead == 0 )
+    {
+        wordsToRead = -1;
+    }
+
+    printf("\n0x%08X: ", 0);
+    while( !done )
+    {
+        freadReply = fread( byteBuffer, sizeof(byteBuffer), 1 , binFilePtr );
+
+        if( freadReply == 1 )   //all fine
+        {
+            printf("%08X ", wordBuffer[0]);
+        }
+        else
+        {
+            done = true;
+        }
+
+        wordsRead++;
+
+        if( (wordsRead % 4) == 0 )
+        {
+            printf("\n0x%08X: ", wordsRead*4);
+        }
+
+        if( wordsRead == wordsToRead )      //max given
+        {
+            done = true;
+        }
+    }
+}
+
+
+//https://developer.arm.com/documentation/ka001375/latest/
+/*
+IMPORTANT NOTE FROM ARM:
+Automatic address increment is only guaranteed to operate on the bottom 10-bits of the address held in the TAR. Auto address incrementing of bit [10] and beyond is implementation defined. This means that auto address incrementing at a 1KB boundary is implementation defined. For example, if TAR[31:0] is set to 0x14A4, and the access size is word, successive accesses to the DRW increment TAR to 0x14A8, 0x14A, and so on, up to the end of the 1KB range at 0x17FC. At this point, the auto-increment behavior on the next DRW access is implementation defined.
+
+BUT THIS SHOUDL BE FINE... *(it fits to 400 though... )
+
+M1: Increments and wraps within a 1KB address boundary, for example, for word incrementing from 0x1400-0x17FC.
+If the start is at 0x14A0, then the counter increments to 0x17FC, wraps to 0x1400, then continues incrementing to 0x149C.
+
+M3: same but with 4KB boundary
+
+apparently this wraps... somehow...
+
+do we have to somehow reset the auto increment... ??? so strange!
+*/
+
+
+
+// base offset needs to be aligned to 128 (0x80) bytes (corresponds to 32 words which is the smallest mutliple that the device driver will transfer (when subtracting the initialisiation data))
+// this ensures, that we stay within a region where the automatic address increase works
+int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer, uint32_t *debugBuffer )      //*baseOffset = ( *baseAddr % 0x80 );
+{
+    if ( (baseAddr % 0x80) != 0 )
+    {
+        printf( "stmFetchAligned() error: baseAddr not aligned.\n");
+        return -11;
+    }
+
+    comArray localCom;
+    uint32_t addressCounter = 0;
+    uint32_t wordsTransferred = 0;
+    uint32_t wordsStored = 0;
+
+    comArrayInit( &localCom );
+
+    while( wordsTransferred < wordCount )      //loop until all words have been read!
+    {
+        comArray_prepMemAccess( &localCom, 0x0, baseAddr + addressCounter * 4 );
+        uint32_t startIndex = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );     //dummy read - does not count yet
+
+        uint32_t endIndexPlusOne = startIndex;
+
+        while( (wordsTransferred < wordCount) && ( wordsTransferred < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
+        {
+            endIndexPlusOne = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            wordsTransferred++;
+        }
+
+        comArrayTransfer( &localCom );
+
+        for( int i = startIndex; i < endIndexPlusOne; i++ )
+        {
+            returnBuffer[wordsStored] = comArrayRead( &localCom, i );
+            wordsStored++;
+            addressCounter++;
+        }
+    }
+
+    return 0;
+}
+
+void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
+{
+	*baseOffset = (*baseAddr % 0x80 );
+	*baseAddr -= *baseOffset;
+	*wordCount += *baseOffset / 4;
+
+	if( *baseOffset != 0 )
+    {
+        printf( "automatically shifted base address by -0x%08X\n", *baseOffset);
+        printf( "increased wordCount by %d\n", (*baseOffset/4));
+    }
+}
+
+void stmPrint( uint32_t baseAddr, uint32_t wordCount )
+{
+    printf( "stmPrint: base: 0x%x, words: %d\n", baseAddr, wordCount );
+
+    uint32_t newWordCount = wordCount;
+    uint32_t newBaseAddr = baseAddr;
+    uint32_t baseOffset = 0;
+
+    align2mem( &newBaseAddr, &newWordCount, &baseOffset );    // shifts base addr to new location: baseAddr - baseOffset and increases wordCount to account for the shift
+
+    uint32_t wordOffset = baseOffset / 4;
+
+    uint32_t *dataArray = calloc( newWordCount, sizeof(uint32_t) );      //64bits * 64 transfers
+    uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
+
+    printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
+    uint32_t reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    printf( "reply: %d\n", reply);
+
+    for (int i = wordOffset; i < newWordCount; i++)
+    {
+        if( ( i % 4 ) == 0 )
+        {
+            printf( "0x%08X: ", i*4 + newBaseAddr );
+        }
+        printf( "%08X (%08X) ", dataArray[i], debugArray[i] );          //display ACK
+        //printf( "%08X ", dataArray[i] );                                   //do not display ACK
+
+        if( ( ( i + 1 ) % 4) == 0 )
+        {
+            printf( "\n" );
+        }
+    }
+}
+
+
+void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the number of words that are supposed to be displayed
+{
+    printf( "stmDump: base: 0x%x, words: %d\n", baseAddr, wordCount );
+
+    //need 6 commands for setup + wordcount reads + 1 (because read is delayed) = 7 + wordcount reads
+    //maximum commands that SWDPI supports: 64 --> 64-7 is 57 words can be read from the MCU
+    char filenamestr[128];
+    printf( "please enter filename: " );
+    scanf( "%127[^\n]", filenamestr );
+
+    //check if file exists
+    FILE *file = fopen( filenamestr, "r");
+    if( file )
+    {
+        fclose(file);
+        printf( "file already exists - abort!\n" );
+        return 0;
+    }
+
+    //file does not exist (OR we cannot read it...)
+    file = fopen( filenamestr, "wb");
+
+    uint32_t newWordCount = wordCount;
+    uint32_t newBaseAddr = baseAddr;
+    uint32_t baseOffset = 0;
+    align2mem( &newBaseAddr, &newWordCount, &baseOffset );    // shifts base addr to new location: baseAddr - baseOffset and increases wordCount to account for the shift
+
+    uint32_t wordOffset = baseOffset / 4;
+
+    uint32_t *dataArray = calloc( newWordCount, sizeof(uint32_t) );      //64bits * 64 transfers
+    uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
+
+    printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
+    uint32_t reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    printf( "reply: %d\n", reply);
+
+    for( int i = wordOffset; i < newWordCount; i++ )
+    {
+        //printf( "%08X (%08X) ", dataArray[i], debugArray[i] );
+        fwrite( &dataArray[i], sizeof(dataArray[i]), 1, file);
+    }
+
+    free( dataArray );
+    free( debugArray );
+    fclose( file );
+}
