@@ -20,8 +20,6 @@ struct armComponent
     const char  description[64];
 };
 
-
-
 //information for access port
 typedef struct APinfo
 {
@@ -41,13 +39,16 @@ typedef struct APinfo
     uint8_t     present;
 } APinfo;
 
+typedef struct romTable romTable;
+
 //information for debug component
 // registers PIDR0-7 and CIDR0-3 are always present and should identify the component typer or class (ROM, SCS, etc...)
-typedef struct DCinfo
+typedef struct debugComponent
 {
+    uint32_t baseAddr;  //...
+    uint32_t depth;     //for printing
     uint32_t CIDR[4];
     uint32_t PIDR[8];       //5-7 are reserved
-
     uint32_t PCIDR;
 
     uint32_t myclass;
@@ -64,17 +65,38 @@ typedef struct DCinfo
     uint32_t revision;
 
     uint32_t cpuID;
-} DCinfo;
 
+    romTable *componentROMtable;
+} debugComponent;
 
-void processARMComponentClass( DCinfo *info );
-uint8_t processARMComponent( DCinfo *info );   // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
-void processComponenFields( DCinfo *componentInfo );
-int extractComponentInfo( uint32_t base, DCinfo *componentInfo );
+typedef struct romTable
+{
+    debugComponent  components[16];
+    uint32_t        compCount;
+} romTable;
+
+//utilities
 void tabsf( uint32_t depth );
-void extractComponent( uint32_t base, uint32_t depth );
+uint32_t calcNewBaseTwosComplement( uint32_t base, uint32_t offset );
+
+void processARMComponentClass( debugComponent *thisComponent );
+uint8_t processARMComponent( debugComponent *thisComponent );   // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
+void processComponenFields( debugComponent *thisComponent );
+
+int extractComponent( debugComponent *thisComponent );
+int extractROMtable( debugComponent *thisComponent );
+int extractCoreSight( debugComponent *thisComponent );
+int extractgenericIP( debugComponent *thisComponent );
+
+int extractComponentBaseInfo( debugComponent *thisComponent );
+
+void printComponentBaseInfo( debugComponent *thisComponent );
+
+
 int extractAccessPort( int i, APinfo *currentAP );
 int detectSystem( void );
+
+
 
 //deprecated:
 void read_ids();       //reads some registers

@@ -13,9 +13,7 @@
 #include "cheese_registers.h"
 #include "cheese_comSWD.h"
 
-
-
-
+extern int reply;
 
 void fileprint( char *path, int wordsToRead )
 {
@@ -122,7 +120,12 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
             wordsTransferred++;
         }
 
-        comArrayTransfer( &localCom );
+        reply = comArrayTransfer( &localCom );
+        if( reply < 0 )
+        {
+            printf( "com Error: %d\nAborting!\n", reply );
+            return reply;
+        }
 
         for( int i = startIndex; i < endIndexPlusOne; i++ )
         {
@@ -148,7 +151,7 @@ void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
     }
 }
 
-void stmPrint( uint32_t baseAddr, uint32_t wordCount )
+int stmPrint( uint32_t baseAddr, uint32_t wordCount )
 {
     printf( "stmPrint: base: 0x%x, words: %d\n", baseAddr, wordCount );
 
@@ -164,8 +167,12 @@ void stmPrint( uint32_t baseAddr, uint32_t wordCount )
     uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
 
     printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
-    uint32_t reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
-    printf( "reply: %d\n", reply);
+    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    if( reply < 0 )
+    {
+        printf( "STM Read Error: %d\nAborting!\n", reply );
+        return reply;
+    }
 
     for (int i = wordOffset; i < newWordCount; i++)
     {
@@ -181,10 +188,11 @@ void stmPrint( uint32_t baseAddr, uint32_t wordCount )
             printf( "\n" );
         }
     }
+    return 0;
 }
 
 
-void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the number of words that are supposed to be displayed
+int stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the number of words that are supposed to be displayed
 {
     printf( "stmDump: base: 0x%x, words: %d\n", baseAddr, wordCount );
 
@@ -200,7 +208,7 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
     {
         fclose(file);
         printf( "file already exists - abort!\n" );
-        return 0;
+        return -1;
     }
 
     //file does not exist (OR we cannot read it...)
@@ -217,8 +225,12 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
     uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
 
     printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
-    uint32_t reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
-    printf( "reply: %d\n", reply);
+    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    if( reply < 0 )
+    {
+        printf( "STM Read Error: %d\nAborting!\n", reply );
+        return reply;
+    }
 
     for( int i = wordOffset; i < newWordCount; i++ )
     {
@@ -229,4 +241,5 @@ void stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the 
     free( dataArray );
     free( debugArray );
     fclose( file );
+    return 0;
 }

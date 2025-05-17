@@ -89,7 +89,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 
 	if( *ack > 1 )
 	{
-		return -11;		//probably should make some error codes...
+		return -1* (*ack);		//probably should make some error codes...
 	}
 	return 0;
 }
@@ -278,9 +278,12 @@ uint8_t SWDGPIOBBD_cycleRead(void)
 
 	SWDPI_gpio_interface.unsetPin( clockPin );
 
+	//udelay(half_period_us/2);
 	udelay(half_period_us);
-
 	uint8_t value = SWDPI_gpio_interface.readPin( dataPin );	//or just before ...
+	//udelay(half_period_us/2);
+
+
 
 	//udelay(half_period_us);
 

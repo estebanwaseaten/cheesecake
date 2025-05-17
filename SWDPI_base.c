@@ -33,11 +33,12 @@ MODULE_AUTHOR("dw42");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0:1.0");
 
-//https://qcentlabs.com/posts/swd_banger/
-// clock idles high. --> corrected to LOW for now
-// bit is read at the beginning of the low-high clock cycle (at the initial falling clock)
-// bit it written also at the beginning o fthe clock cycle, so that it has defined value at the rising clock in the middle of the cycle.
-// pins can always pull down or none... it does not seem to matter... leave at none for now...\
+/* https://qcentlabs.com/posts/swd_banger/
+ * clock idles high. --> corrected to LOW for now
+ * bit is read at the beginning of the low-high clock cycle (at the initial falling clock)
+ * bit it written also at the beginning o fthe clock cycle, so that it has defined value at the rising clock in the middle of the cycle.
+ * pins can always pull down or none... it does not seem to matter... leave at none for now...
+ */
 
 /* regarding timing - useful comments from chatGPT:
 To minimize interruptions and avoid long stall times in a kernel module on a Raspberry Pi, consider the following strategies:
@@ -52,12 +53,12 @@ To minimize interruptions and avoid long stall times in a kernel module on a Ras
 // start a thread --> SCHED_FIFO
 
 /* struct task_struct *task;
-task = kthread_create(your_thread_function, data, "your_thread_name");
-if (!IS_ERR(task)) {
-    kthread_bind(task, 0); // Bind to CPU 0
-    wake_up_process(task);
-}
-*/
+ * task = kthread_create(your_thread_function, data, "your_thread_name");
+ * if (!IS_ERR(task)) {
+ *    kthread_bind(task, 0); // Bind to CPU 0
+ *    wake_up_process(task);
+ *}
+ */
 
 
 uint8_t SWDGPIOBBD_lock;
@@ -165,8 +166,8 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t *off)
 {
 	pr_info("\n *** Driver Write Function Called...!!!\n");
-	pr_info("len: %d\n", len);
-	pr_info("off: %d\n", *off);
+	pr_info("len: %d\n", (int)len);
+	pr_info("off: %d\n", (int)*off);
 	if( SWDGPIOBBD_readwritelock == 1 )
 	{
 		pr_warn("write fail - currently in read action \n");
@@ -203,7 +204,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	for (size_t i = 0; i < count; i++)
 	{
 		//tempBuffer = *((uint64_t*)buf);
-		copy_from_user(&tempBuffer, &buf[8*i], 8);	//copy 64bits per loop
+		long bytesLeft = copy_from_user(&tempBuffer, &buf[8*i], 8);	//copy 64bits per loop
 
 		if( tempBuffer == 0 )
 		{
@@ -235,13 +236,13 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	//start actually sending (whole sequence with one jtag2swd first):
 	int reply = 0;
 
-	SWDGPIOBBD_sequence( swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
+	SWDGPIOBBD_sequence( (uint8_t*)swd_sequence_jtag2swd, swd_sequence_jtag2swd_length );
 
 	for( int i = 0; i < count; i++ )
 	{
 		//pr_info("send buffer before transfer: 0x%x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		reply = SWDGPIOBBD_transfer( &sendBuffer[i] );
-		pr_info("send buffer after transfer: 0x%x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
+		//pr_info("send buffer after transfer: 0x%x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
 		if( reply < 0 )
 		{
 			pr_info("error %d aborting \n\n", reply);
@@ -251,11 +252,20 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 
 			SWDGPIOBBD_abort();
 
-			return receiveBuffer_level;	//abort
+			//return receiveBuffer_level;	//abort
+			i = count;
 		}
 		//pr_info("\n");
 		receiveBuffer[receiveBuffer_level] = sendBuffer[i];
 		receiveBuffer_level++;
+	}
+	/////////////////// SEEEMS TO WORK WITHOUT THIS, BUT WE LEAVE IT FOR NOW.
+	SWDGPIOBBD_sequence( (uint8_t*)swd_sequence_null, swd_sequence_null_length );		//clock at least 8 cycles
+
+	for( int i = 0; i < count; i++ )
+	{
+		pr_info("send buffer before transfer: 0x%08x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);
+		pr_info("receiveBuffer buffer after transfer: 0x%08x data: 0x%x\n", ((uint32_t*)receiveBuffer)[2*i], ((uint32_t*)receiveBuffer)[2*i+1]);
 	}
 
 	return receiveBuffer_level;
@@ -268,7 +278,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 	// e.g. copy_to_user(buf, kernel_buffer, mem_size);
 	pr_info("receiveBuffer_level: %d\n", receiveBuffer_level );
 	pr_info("receiveBuffer_levelRead: %d\n", receiveBuffer_levelRead );
-	pr_info("len: %d\n", len );
+	pr_info("len: %d\n", (int)len );
 
 	SWDGPIOBBD_readwritelock = 1;
 
@@ -314,7 +324,7 @@ static ssize_t SWDGPIOBBD_read(struct file *filp, char __user *buf, size_t len, 
 
 
 
-	copy_to_user(buf, receiveBuffer, len);
+	long bytesLeft = copy_to_user(buf, receiveBuffer, len);
 
 	receiveBuffer_levelRead += len/8;	//we count in 64bit words, but len is in 8bit bytes
 
@@ -513,7 +523,7 @@ static ssize_t SWDGPIOBBD_ProcRead( struct file* file, char __user* user_buffer,
 
 	//could return current status...
 
-	copy_to_user( user_buffer, greeting, length_of_greeting );
+	long bytesLeft = copy_to_user( user_buffer, greeting, length_of_greeting );
 	*offset = length_of_greeting;
 
 	return length_of_greeting;

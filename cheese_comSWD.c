@@ -7,7 +7,8 @@
 
 #include <fcntl.h>      // O_RDWR | O_SYNC etc
 #include <stdlib.h>
-#include <unistd.h>     //close()
+
+#include <unistd.h>     //close() sleep()
 #include <stdio.h>      //printf()
 #include <string.h>              //memset()
 
@@ -17,12 +18,14 @@
 
 void comArrayInit( comArray *myComArray )
 {
-    if( myComArray->initDone == 0 )
+    if( myComArray->initDone != 0 )
     {
-        myComArray->cmdArray32 = calloc( MAX_COMS, 8 );         //8 bytes each command
-        myComArray->replyArray32 = calloc( MAX_COMS, 8 );
-        myComArray->initDone = 1;
+        //printf( "Warning: com array initDone was 1 already\n");       //seems to happen quite frequently
     }
+
+    myComArray->cmdArray32 = calloc( MAX_COMS, 8 );         //8 bytes each command
+    myComArray->replyArray32 = calloc( MAX_COMS, 8 );
+    myComArray->initDone = 1;
     myComArray->filling = 0;
 }
 
@@ -39,13 +42,19 @@ void comArrayDestroy( comArray *myComArray )
 
 int comArrayClear( comArray *myComArray )
 {
+    //printf( "comArrayClear...%d, %d\n", myComArray->cmdArray32,  myComArray->replyArray32 );
+
     if( (myComArray == NULL) || (myComArray->initDone == 0) )
     {
         printf( "comArrayClear() NULL or not inited\n" );
         return -1;
     }
-    myComArray->cmdArray32 = memset( myComArray->cmdArray32, 0x0, MAX_COMS*8 );
-    myComArray->replyArray32 = memset( myComArray->cmdArray32, 0x0, MAX_COMS*8 );
+    //printf( "comArrayClear...before memset\n");
+    memset( myComArray->cmdArray32, 0x0, MAX_COMS*8 );         //SEGMENTATION FAULT (sometimes)
+    //printf( "comArrayClear...between memset\n");
+    memset( myComArray->replyArray32, 0x0, MAX_COMS*8 );
+    //printf( "comArrayClear...after memset\n");
+
     myComArray->initDone = 1;
     myComArray->filling = 0;
 
@@ -57,6 +66,7 @@ int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t acc
 {
     uint32_t selectRegister = (((uint32_t)accessPort) << 24) | (((uint32_t)accessPortBank) << 4);
 
+
     //printf("comArray_prepAPaccess(): selectRegister: 0x%08X\n", selectRegister);
     //clear com array
     comArrayClear( myComArray );
@@ -66,7 +76,7 @@ int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t acc
     comArrayAdd( myComArray, DP_ABORT_CMD, 0x1E );                      //clean sticky errors
 
     //power up system and debug system:
-    comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x54000000 );           //system power-up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
+    comArrayAdd( myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );           //system power-up requests [30], Debug power-up request [28], Debug reset request [26]. [30,28] = 0x50000000; [30,28,26] = 0x54000000
 
     //select Access Port and its Memory Bank
     return comArrayAdd( myComArray, DP_SELECT_CMD, selectRegister );
@@ -123,8 +133,14 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index star
 
 int comArrayTransfer( comArray *myComArray )
 {
+
     //printf("transfer!\n");
     int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
+    if( SWDPIfile < 0 )
+    {
+        return -1;
+    }
+
     write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes
     read( SWDPIfile, myComArray->replyArray32,  myComArray->filling*2*4 );
 

@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+*
+*
+* Copyright (C) 2025 Daniel Wegkamp
+*/
+
 #include <stdint.h>     //uint32_t etc
 
 #include <stdio.h>
@@ -5,12 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cheese_utils.h"
 #include "cheese_registers.h"
 #include "cheese_comSWD.h"
 #include "cheese_memoryaccess.h"
 #include "cheese_systeminfo.h"
 
-
+int reply;
 
 int main( int argc, char *argv[] )
 {

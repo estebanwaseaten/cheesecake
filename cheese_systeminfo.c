@@ -8,7 +8,8 @@
 #include "cheese_systeminfo.h"
 #include "cheese_comSWD.h"
 #include "cheese_registers.h"
-
+#include "cheese_utils.h"
+#include <stdlib.h>             //calloc
 #include <stdio.h>
 
 comArray infoComArray;
@@ -25,13 +26,16 @@ static const char * const arm_partno[0xFFF] = {
 #include "arm_partno.inc"
 };
 
-static const char * const arm_compClass[0xFF] = {
+static const char * const arm_compClass[0xFF] = {       //is an array of constant char pointers...
 #include "arm_compclass.inc"
 };
 
 struct armComponent arm_comp[0xFF] = {
 #include "arm_dbcomponents.inc"
 };
+
+extern int reply;
+
 
 
 // collecting information about the system via Serial Wire Debug (SW-DB)
@@ -53,6 +57,56 @@ int detectSystem( void )
 
     comArrayInit( &infoComArray );
 
+    //*********************** info about debug port
+    comArray_prepAPaccess( &infoComArray, 0x0, 0x0 );   //extract IDCODE
+    reply = comArrayTransfer( &infoComArray );
+    if( reply < 0 )
+    {
+        printf( "com Error: %d\nAborting!\n", reply );
+        return reply;
+    }
+
+
+    uint32_t dpIDCODE = comArrayRead( &infoComArray, 0 );
+    //DP
+    printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
+
+    switch( dpIDCODE )
+    {
+        case 0x0BC11477:
+            printf( "* Default Cortex-M0+ Core (uncomfirmed)\n"); //this is not confirmed
+            break;
+        case 0x2BA01477:
+            printf( "* Cortex-M4 Core w. FPU (uncomfirmed)\n");   //this is not confirmed
+            break;
+
+        default:
+            printf( "* Unknown Architecture\n");
+            break;
+    }
+
+    uint32_t dpPartNo = (dpIDCODE >> 12) & 0xFFFF;
+    uint32_t dpVersion = (dpIDCODE >> 28) & 0xF;
+
+// version=0x4->JTAG-DP version=0x2->SW-DP,  version=0x3->SW-DP     ... these parameters seem to be defined differently amongst versions...
+// partno=0xBA00->JTAG otherwise???->SW-DP
+    if( dpPartNo == 0xBA00 )         //implies version is 0x0
+    {
+        printf( "* ARM JTAG-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    else if( (dpPartNo == 0xBA10) || (dpPartNo == 0xBA01 ) || (dpPartNo == 0xBA02 ) )
+    {
+        printf( "* ARM SW-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    else        // if this does not fit the older format
+    {
+        printf( "* other DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
+    }
+    printf( "* DP designer: 0x%X (%s)\n", ((dpIDCODE & 0x0FFE) >> 1), jep106[(dpIDCODE >> 8 ) & 0xF][((dpIDCODE >> 1 ) & 0x7F)-1] );
+
+
+
+
     printf( "scanning for access points: \n");
     while( !done && (APcount < 10 ))
     {
@@ -66,7 +120,12 @@ int detectSystem( void )
         comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );         //...BASE      //5+3
         comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );         //...IDR       //5+4
 
-        comArrayTransfer( &infoComArray );
+        reply = comArrayTransfer( &infoComArray );
+        if( reply < 0 )
+        {
+            printf( "com Error: %d\nAborting!\n", reply );
+            return reply;
+        }
 
         myAccessPorts[APcount].apIDR = comArrayRead( &infoComArray, nextIndex + 4 );        //** revision[31:28] designer[27:17] class[16:13] variant[7:4] type[3 0]
         printf( "AP-IDR: 0x%08X\n", myAccessPorts[APcount].apIDR);
@@ -97,56 +156,8 @@ int detectSystem( void )
 
     }
 
-
-//*********************** info about debug port
-    // here it only prints once :)
-    uint32_t dpIDCODE = comArrayRead( &infoComArray, 0 );
-    //DP
-    printf( "\nSW-DP IDR (IDCODE): 0x%08X\n", dpIDCODE );
-
-    switch( dpIDCODE )
-    {
-        case 0x0BC11477:
-            printf( "* Default Cortex-M0+ Core (uncomfirmed)\n"); //this is not confirmed
-            break;
-        case 0x2BA01477:
-            printf( "* Cortex-M4 Core w. FPU (uncomfirmed)\n");   //this is not confirmed
-            break;
-
-        default:
-            printf( "* Unknown Architecture\n");
-            break;
-    }
-
-    uint32_t dpPartNo = (dpIDCODE >> 12) & 0xFFFF;
-    uint32_t dpVersion = (dpIDCODE >> 28) & 0xF;
-
-    // version=0x4->JTAG-DP version=0x2->SW-DP,  version=0x3->SW-DP     ... these parameters seem to be defined differently amongst versions...
-    // partno=0xBA00->JTAG otherwise???->SW-DP
-    if( dpPartNo == 0xBA00 )         //implies version is 0x0
-    {
-        printf( "* ARM JTAG-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
-    }
-    else if( (dpPartNo == 0xBA10) || (dpPartNo == 0xBA01 ) || (dpPartNo == 0xBA02 ) )
-    {
-        printf( "* ARM SW-DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
-    }
-    else        // if this does not fit the older format
-    {
-        printf( "* other DP version: 0x%X, partno: 0x%X\n", dpVersion, dpPartNo);
-    }
-    printf( "* DP designer: 0x%X (%s)\n", ((dpIDCODE & 0x0FFE) >> 1), jep106[(dpIDCODE >> 8 ) & 0xF][((dpIDCODE >> 1 ) & 0x7F)-1] );
-
-
-
-
-   //read_mcu_id();
-
-
-
-
-//*************** examine access ports:
-    //APs
+//*************** extract access ports:
+//APs
     printf( "\nFound %d Access Port(s):\n\n", APcount );
     for (size_t i = 0; i < APcount; i++)
     {
@@ -156,80 +167,42 @@ int detectSystem( void )
 }
 
 
-void processARMComponentClass( DCinfo *info )
+int extractAccessPort( int i, APinfo *currentAP )
 {
-
-    switch( info->myclass )
+    if( currentAP->class == 0 )
     {
-        case 0x02:  //SCS       System Control Block: offset 0xD00; Debug Regs offset: 0xDF0
-            //The SCS is a memory-mapped 4KB address space that provides 32-bit registers for configuration, status reporting and control.
-            //offsets: described in ARM6 manual
-            //0x000 - 0x00F aux ctrl regs
-            //0xD00 - 0xD8F System Control Block
-            //0xF90 - 0xFCF implementation defined
-            //0x010 - 0x0FF systick
-            //0x100 - 0xCFF external interupt controller
-            //0xDF0 - 0xEFF debug ctrl & conf
-            //0xD90 - 0xDEF optional MPU
-            info->cpuID = 0;
-
-
-            break;
-        default:
-            break;
+        printf( "generic AP #%d (IDR=0x%08X, type=%d):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
     }
-}
-
-uint8_t processARMComponent( DCinfo *info )   // ID = 0x PIDR0 PIDR1 PIDR2 CIDR1
-{
-    for (size_t i = 0; i < 0xFF; i++)
+    else if( (currentAP->class == 0x8) || (currentAP->class == 0x1) )
     {
-        //printf( "0x%08X 0x%02X 0x%02X 0x%02X 0x%02X \n", arm_comp[i].ID, (arm_comp[i].ID >> 24) & 0xFF, (arm_comp[i].ID >> 16) & 0xFF, (arm_comp[i].ID >> 8) & 0xFF, (arm_comp[i].ID >> 0) & 0xFF );
-        if( info->PCIDR == arm_comp[i].ID  )
-        {
-            printf( "%s, class: %s\n", arm_comp[i].description, arm_compClass[arm_comp[i].componentClass] );
-            info->myclass = arm_compClass[arm_comp[i].componentClass];
-
-            //should we process the class here??
-            processARMComponentClass( info );
-            return info->myclass;
-        }
-    }
-    if ( info->class == 0x1) //ROM table
-    {
-        printf( "unidentified ROM table (implementation dependent)\n" );
+        //class could be 0x8 or 0x1 for mem-ap depending on definition of fields...
+        printf( "MEM-AP #%d (IDR=0x%08X, %s):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
     }
     else
     {
-        printf( "unidentified\n" );
+        printf( "Unknown Access Port Type #%d. Aborting!\n", i );
     }
-    return 0x0;
+
+    printf( "* Access Port Information:\n" );
+    printf( "* BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
+    printf( "* AP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
+    printf( "* format: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
+    printf( "* type: %d, variant: %d, class: 0x%X, designer: 0x%X (%s), revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer, jep106[(currentAP->designer >> 7 ) & 0xF][((currentAP->designer ) & 0x7F)-1]  ,currentAP->revision );
+
+    printf( "------------------------------------------------------\n\n");
+
+    debugComponent mainDebugComponent = {.componentROMtable = NULL };
+    mainDebugComponent.baseAddr = currentAP->apBASE;
+    mainDebugComponent.depth = 0;
+    extractComponent( &mainDebugComponent );       //extract single base compoinent (probably a ROM table)
+    //extractComponent( currentAP->apBASE + 4, 0 );
+    return 0;
 }
 
 
 
-void processComponenFields( DCinfo *componentInfo )
-{
-    componentInfo->class = componentInfo->CIDR[1] >> 4;     //*** 0x0=generic, 0x1=ROM Table, 0x9=CoreSightComponent, 0xB=peripheralTestBlock, 0xE=genericIPComponent, 0xF=CoreLink or PrimeCell
 
-    // from Peripheral Identification Registers
-    componentInfo->size = (componentInfo->PIDR[4] & 0xF0) >> 4;
-    componentInfo->partNo = componentInfo->PIDR[0] | ((componentInfo->PIDR[1] & 0xF) << 8);     //correct
 
-    componentInfo->revision = (componentInfo->PIDR[2] >> 4) & 0xF;
-    componentInfo->revand = (componentInfo->PIDR[3] >> 4) & 0xF;
-    componentInfo->custom = componentInfo->PIDR[3] & 0xF;
-
-    componentInfo->jedec = ( componentInfo->PIDR[2] & 0x8 ) >> 3;
-    componentInfo->JEP106id = ((componentInfo->PIDR[1] & 0xF0) >> 4) | ((componentInfo->PIDR[2] & 0x7) << 4);
-    componentInfo->JEP106cont = componentInfo->PIDR[4] & 0xF;
-
-    //compact single word containing hopefully all the important bits of information
-    componentInfo->PCIDR = (componentInfo->PIDR[0] & 0xFF) << 24;
-    componentInfo->PCIDR |= (componentInfo->PIDR[1] & 0xFF) << 16;
-    componentInfo->PCIDR |= (componentInfo->PIDR[2] & 0xFF) << 8;
-    componentInfo->PCIDR |= (componentInfo->CIDR[1] & 0xFF) << 0;
-}
 
 // * IHI0031G_debug_interface_v5_2_architecture_specification.pdf
 // ** IHI0074E_debug_interface_v6_0_architecture_specification.pdf
@@ -244,10 +217,10 @@ void processComponenFields( DCinfo *componentInfo )
 // DBGMCU_IDCODE at address 0xE0042000  (for some devices)
 // the Cortex SCB->CPUID would also be interesting... but where are these located???
 
-int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
+int extractComponentBaseInfo( debugComponent *thisComponent )
 {
     // IHI0074E_debug_interface_v6_0_architecture_specification.pdf
-    int nextIndex = comArray_prepMemAccess( &infoComArray, 0x00, base + 0xFCC );      //
+    int nextIndex = comArray_prepMemAccess( &infoComArray, 0x00, thisComponent->baseAddr + 0xFCC );      //
     // Any ROM Table must implement a set of Component and Peripheral ID Registers, that start at offset 0xFD0
     //0xF00-0xFFC are the CoreSight management registers - common to all CoreSight Components
     //0xFCC -> memtype
@@ -269,41 +242,37 @@ int extractComponentInfo( uint32_t base, DCinfo *componentInfo )
     comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFF8 (CIDR2)
     comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFFC (CIDR3)
 
-    int err = comArrayTransfer( &infoComArray );
-
-    if( err < 0 )
+    reply = comArrayTransfer( &infoComArray );
+    if( reply  < 0 )
     {
         printf( "comArrayTransfer error!\n");
-        return err;
+        return reply;
     }
 
-    componentInfo->memType = comArrayRead( &infoComArray, nextIndex + 1 ) & 0xFF;
+    thisComponent->memType = comArrayRead( &infoComArray, nextIndex + 1 ) & 0xFF;
 
-    componentInfo->CIDR[0] = comArrayRead( &infoComArray, nextIndex + 10 );
-    componentInfo->CIDR[1] = comArrayRead( &infoComArray, nextIndex + 11 );
-    componentInfo->CIDR[2] = comArrayRead( &infoComArray, nextIndex + 12 );
-    componentInfo->CIDR[3] = comArrayRead( &infoComArray, nextIndex + 13 );
+    thisComponent->CIDR[0] = comArrayRead( &infoComArray, nextIndex + 10 );
+    thisComponent->CIDR[1] = comArrayRead( &infoComArray, nextIndex + 11 );
+    thisComponent->CIDR[2] = comArrayRead( &infoComArray, nextIndex + 12 );
+    thisComponent->CIDR[3] = comArrayRead( &infoComArray, nextIndex + 13 );
 
-    componentInfo->PIDR[0] = comArrayRead( &infoComArray, nextIndex + 6 ) & 0xFF;
-    componentInfo->PIDR[1] = comArrayRead( &infoComArray, nextIndex + 7 ) & 0xFF;
-    componentInfo->PIDR[2] = comArrayRead( &infoComArray, nextIndex + 8 ) & 0xFF;
-    componentInfo->PIDR[3] = comArrayRead( &infoComArray, nextIndex + 9 ) & 0xFF;
-    componentInfo->PIDR[4] = comArrayRead( &infoComArray, nextIndex + 2 ) & 0xFF;
-    componentInfo->PIDR[5] = comArrayRead( &infoComArray, nextIndex + 3 ) & 0x0;    //reserved
-    componentInfo->PIDR[6] = comArrayRead( &infoComArray, nextIndex + 4 ) & 0x0;   //reserved
-    componentInfo->PIDR[7] = comArrayRead( &infoComArray, nextIndex + 5 ) & 0x0;   //reserved
+    thisComponent->PIDR[0] = comArrayRead( &infoComArray, nextIndex + 6 ) & 0xFF;
+    thisComponent->PIDR[1] = comArrayRead( &infoComArray, nextIndex + 7 ) & 0xFF;
+    thisComponent->PIDR[2] = comArrayRead( &infoComArray, nextIndex + 8 ) & 0xFF;
+    thisComponent->PIDR[3] = comArrayRead( &infoComArray, nextIndex + 9 ) & 0xFF;
+    thisComponent->PIDR[4] = comArrayRead( &infoComArray, nextIndex + 2 ) & 0xFF;
+    thisComponent->PIDR[5] = comArrayRead( &infoComArray, nextIndex + 3 ) & 0x0;    //reserved
+    thisComponent->PIDR[6] = comArrayRead( &infoComArray, nextIndex + 4 ) & 0x0;   //reserved
+    thisComponent->PIDR[7] = comArrayRead( &infoComArray, nextIndex + 5 ) & 0x0;   //reserved
 
-    processComponenFields( componentInfo );
+    if( (thisComponent->CIDR[0] != 0xD) || (thisComponent->CIDR[2] != 0x5) || (thisComponent->CIDR[3] != 0xB1) )
+    {
+        return -8;
+    }
+
+    processComponenFields( thisComponent );
 
     return 0;
-}
-
-void tabsf( uint32_t depth )
-{
-    for (size_t i = 0; i < depth; i++)
-    {
-        printf("\t");
-    }
 }
 
 // NON-critical Errors:
@@ -313,21 +282,168 @@ void tabsf( uint32_t depth )
 //  - ROM table entry has no valid registers at offset 0xFF0
 // maybe subsystems have to be turned on first???
 
-void extractComponent( uint32_t base, uint32_t depth )
+int extractComponent( debugComponent *thisComponent )
 {
-    DCinfo thisComponentInfo;
+    //wait
+    tabsf( thisComponent->depth ); printf( "\n*** ExtractComponent at 0x%X:\n", thisComponent->baseAddr );
+
+    int err = extractComponentBaseInfo( thisComponent );
+    if ( err < 0 )
+    {
+        tabsf( thisComponent->depth );printf( "This component seems invalid!\n" );
+        return -8;
+    }
+
+    printComponentBaseInfo( thisComponent );
+
+    //wait
+
+    //class dependent further processing
+    switch( thisComponent->class )
+    {
+        case 0x1:       //ROM table
+            extractROMtable( thisComponent );
+            break;
+
+        case 0x9:       //CoreSightComponent
+            extractCoreSight( thisComponent );
+            break;
+
+        case 0xE:       //genericIPComponent
+            extractgenericIP( thisComponent );
+            break;
+
+        default:
+            break;
+    }
+}
+
+int extractROMtable( debugComponent *thisComponent )
+{
+    tabsf( thisComponent->depth ); printf( "*** extractROMtable\n" );
+
+    comArray localComArray;
+    comArrayInit( &localComArray );
+    int nextIndex = comArray_prepMemAccess( &localComArray, 0x00, thisComponent->baseAddr );
+
+    comArrayAdd( &localComArray, AP_READ3_CMD, 0x0 );                       //start reading rom table entries
+    for( int i = 0; i < 32; i++ )
+    {
+        comArrayAdd( &localComArray, AP_READ3_CMD, 0x0 );
+    }
+    reply = comArrayTransfer( &localComArray );
+    if( reply < 0 )
+    {
+        printf( "com Error: %d\nAborting!\n", reply );
+        return reply;
+    }
+
+    uint32_t    romRegister[32] = {0, };
+    thisComponent->componentROMtable = (romTable*)calloc( 1, sizeof( romTable ) );     //create a rom table with max 16 components
+    thisComponent->componentROMtable->compCount = 0;
+
+    for( int i = 0; i < 16; i++ )   //--> check for valid rom table entries
+    {
+        uint32_t tempReg = comArrayRead( &localComArray, nextIndex + 1 + i );            //[31:12]=OFFSET, [8:4]=POWERID, [2]=poweridvalid, [1]=format, [0]=present
+        if( tempReg == 0x0 )
+        {
+            //skip
+        }
+        else
+        {
+            if( tempReg & 0x1 )
+            {// calculate correct compoinent base Addr:
+                uint32_t newBase = calcNewBaseTwosComplement( thisComponent->baseAddr, tempReg );
+                tabsf( thisComponent->depth ); printf( "rom table entry: 0x%08X Component is present --> component BASE: 0x%08X\n", tempReg, newBase );
+                thisComponent->componentROMtable->components[thisComponent->componentROMtable->compCount].baseAddr = newBase;
+                thisComponent->componentROMtable->components[thisComponent->componentROMtable->compCount].depth = thisComponent->depth + 1;
+                thisComponent->componentROMtable->compCount++;
+            }
+            else
+            {
+                tabsf( thisComponent->depth ); printf( "rom table entry: 0x%08X Component is NOT present \n", tempReg );
+            }
+        }
+    }
+
+    tabsf( thisComponent->depth ); printf( "*** found %d ROM table entries\n", thisComponent->componentROMtable->compCount );
+
+    //process the components of the rom table
+    for( int i = 0; i < thisComponent->componentROMtable->compCount; i++ )
+    {
+        reply = extractComponent( &thisComponent->componentROMtable->components[i] );
+    }
+    //tabsf( depth );printf( "(found %d entries in ROM table!)\n\n", subRomCount );
+    return 0;
+}
 
 
+
+
+
+int extractCoreSight( debugComponent *thisComponent )
+{
+    return 0;
+}
+
+int extractgenericIP( debugComponent *thisComponent )
+{
+    return 0;
+}
+
+void printComponentBaseInfo( debugComponent *thisComponent )
+{
+    tabsf( thisComponent->depth );printf( "Class 0x%X; Memory type 0x%X\n", thisComponent->class, thisComponent->memType );
+    tabsf( thisComponent->depth );printf( "PartNo 0x%X (%s); jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponent->partNo, arm_partno[thisComponent->partNo], thisComponent->jedec, thisComponent->JEP106id, thisComponent->JEP106cont );
+    tabsf( thisComponent->depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponent->CIDR[0], thisComponent->CIDR[1], thisComponent->CIDR[2], thisComponent->CIDR[3]);
+    tabsf( thisComponent->depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponent->PIDR[0], thisComponent->PIDR[1], thisComponent->PIDR[2], thisComponent->PIDR[3], thisComponent->PIDR[4]);
+}
+
+void processComponenFields( debugComponent *thisComponent )
+{
+    thisComponent->class = thisComponent->CIDR[1] >> 4;     //*** 0x0=generic, 0x1=ROM Table, 0x9=CoreSightComponent, 0xB=peripheralTestBlock, 0xE=genericIPComponent, 0xF=CoreLink or PrimeCell
+
+    // from Peripheral Identification Registers
+    thisComponent->size = (thisComponent->PIDR[4] & 0xF0) >> 4;
+    thisComponent->partNo = thisComponent->PIDR[0] | ((thisComponent->PIDR[1] & 0xF) << 8);     //correct
+
+    thisComponent->revision = (thisComponent->PIDR[2] >> 4) & 0xF;
+    thisComponent->revand = (thisComponent->PIDR[3] >> 4) & 0xF;
+    thisComponent->custom = thisComponent->PIDR[3] & 0xF;
+
+    thisComponent->jedec = ( thisComponent->PIDR[2] & 0x8 ) >> 3;
+    thisComponent->JEP106id = ((thisComponent->PIDR[1] & 0xF0) >> 4) | ((thisComponent->PIDR[2] & 0x7) << 4);
+    thisComponent->JEP106cont = thisComponent->PIDR[4] & 0xF;
+
+    //compact single word containing hopefully all the important bits of information
+    thisComponent->PCIDR = (thisComponent->PIDR[0] & 0xFF) << 24;
+    thisComponent->PCIDR |= (thisComponent->PIDR[1] & 0xFF) << 16;
+    thisComponent->PCIDR |= (thisComponent->PIDR[2] & 0xFF) << 8;
+    thisComponent->PCIDR |= (thisComponent->CIDR[1] & 0xFF) << 0;
+}
+
+/*
+int extractComponent( uint32_t base, uint32_t depth )
+{
+    bool valid = true;
 
     tabsf( depth );printf( "*** ExtractComponent at 0x%X:\n", base );
 
     // FIRST get information about this Component(s)
-    int err = extractComponentInfo( base, &thisComponentInfo );
+    componentInfo mainComponentInfo;
+    int err = extractComponentBaseInfo( base, &thisComponentInfo );
     if ( err < 0 )
     {
-
         tabsf( depth );printf( "This component seems invalid!\n" );
-        return;
+        valid = false;
+        return -8;
+    }
+    color_green();
+    if( (thisComponentInfo.CIDR[0] != 0xD) || (thisComponentInfo.CIDR[2] != 0x5) || (thisComponentInfo.CIDR[3] != 0xB1) )
+    {
+        color_default();
+        tabsf( depth ); printf( "This component seems invalid!\n" );
+        valid = false;
     }
 
     tabsf( depth );printf( "Class 0x%X; Memory type 0x%X\n", thisComponentInfo.class, thisComponentInfo.memType );
@@ -335,10 +451,9 @@ void extractComponent( uint32_t base, uint32_t depth )
     tabsf( depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.CIDR[0], thisComponentInfo.CIDR[1], thisComponentInfo.CIDR[2], thisComponentInfo.CIDR[3]);
     tabsf( depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponentInfo.PIDR[0], thisComponentInfo.PIDR[1], thisComponentInfo.PIDR[2], thisComponentInfo.PIDR[3], thisComponentInfo.PIDR[4]);
 
-    if( (thisComponentInfo.CIDR[0] != 0xD) || (thisComponentInfo.CIDR[2] != 0x5) || (thisComponentInfo.CIDR[3] != 0xB1) )
+    if ( !valid )
     {
-        printf("Component is invalid...\n" );
-        return;
+        return -8;
     }
 
     tabsf( depth );printf( "Peripheral OD: 0x%02X%02X%02X%02X%02X\n", thisComponentInfo.PIDR[4] & 0xFF, thisComponentInfo.PIDR[3] & 0xFF, thisComponentInfo.PIDR[2] & 0xFF, thisComponentInfo.PIDR[1] & 0xFF, thisComponentInfo.PIDR[0] & 0xFF );
@@ -347,22 +462,29 @@ void extractComponent( uint32_t base, uint32_t depth )
 
     uint8_t thisComponentClass;
     tabsf( depth );printf("***** identified as: "); thisComponentClass = processARMComponent( &thisComponentInfo );
+    color_default();
 
-    comArray localComArray;
-    comArrayInit( &localComArray );
+
 
     if( thisComponentInfo.class == 0x1 )    //ROM table
     {
         tabsf( depth );printf( "== ROM table content:\n\n" );       //-->> READ ALL THE ADDRESSES:
 
-        int nextIndex = comArray_prepMemAccess( &localComArray, 0x00, base ); //
+        int nextIndex = comArray_prepMemAccess( &localComArray, 0x00, base ); // SEGMENTATION FAULT
+
         comArrayAdd( &localComArray, AP_READ3_CMD, 0x0 );                // 0x000 DO NOT ALTERNATE WRITES AND READS TO DRW
 
         for( int i = 0; i < 32; i++ )
         {
             comArrayAdd( &localComArray, AP_READ3_CMD, 0x0 );
         }
-        comArrayTransfer( &localComArray );
+
+        reply = comArrayTransfer( &localComArray );
+        if( reply < 0 )
+        {
+            printf( "com Error: %d\nAborting!\n", reply );
+            return reply;
+        }
 
         uint32_t    romRegister[32] = {0, };
         int         subRomCount = 0;
@@ -424,57 +546,46 @@ void extractComponent( uint32_t base, uint32_t depth )
     }
     else if( thisComponentInfo.class == 0xE )
     {
-        tabsf( depth );printf( "--> Generic IP component:\n" );
+        tabsf( depth );printf( "(Generic IP component)\n" );
+        //here we can extract SCS, FPB and ETM usw... if we want...
+
+
     }
     else
     {
-        tabsf( depth );printf( "--> not ROM table:\n" );
-    }
-}
-
-
-
-int extractAccessPort( int i, APinfo *currentAP )
-{
-    if( currentAP->class == 0 )
-    {
-        printf( "generic AP #%d (IDR=0x%08X, type=%d):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
-    }
-    else if( (currentAP->class == 0x8) || (currentAP->class == 0x1) )
-    {
-        //class could be 0x8 or 0x1 for mem-ap depending on definition of fields...
-        printf( "MEM-AP #%d (IDR=0x%08X, %s):\n", i, currentAP->apIDR, ap_types[currentAP->type] );
-    }
-    else
-    {
-        printf( "Unknown Access Port Type #%d. Aborting!\n", i );
+        tabsf( depth );printf( "(not ROM table)s\n" );
     }
 
-    printf( "* Access Port Information:\n" );
-    printf( "* BASE: 0x%08X (BASE2: 0x%08X)\n", currentAP->apBASE, currentAP->apBASE2 );
-    printf( "* AP CFG: %d (little endian = 0; big endian = 1)\n", currentAP->apCFG );
-    printf( "* format: %d (1->ADIv5/0->legacy), present: %d\n", currentAP->format,  currentAP->present );
-    printf( "* type: %d, variant: %d, class: 0x%X, designer: 0x%X (%s), revision: 0x%X\n\n", currentAP->type, currentAP->variant, currentAP->class, currentAP->designer, jep106[(currentAP->designer >> 7 ) & 0xF][((currentAP->designer ) & 0x7F)-1]  ,currentAP->revision );
+    comArrayDestroy( &localComArray );
 
-    printf( "------------------------------------------------------\n\n");
-
-    extractComponent( currentAP->apBASE, 0 );
-    //extractComponent( currentAP->apBASE + 4, 0 );
     return 0;
+}*/
+
+
+
+
+
+uint32_t calcNewBaseTwosComplement( uint32_t base, uint32_t offset )
+{
+    if( (offset >> 31) == 1 )    //negative    (most significant bit true -> negative)
+    {
+        return base - ((~offset & 0xFFFFF000) + 0x1000);     //two's complement (bitshifted 12 to the left)... apparently
+        //printf( "---> offset: -0x%08X addr: 0x%08X\n", ~(offset & 0xFFFFF000) + 0x1000, nextComponentAddr );
+    }
+    else
+    {
+        return base + (offset & 0x7FFFF000);
+        //printf( "---> offset: 0x%08X addr: 0x%08X\n", (offset & 0x7FFFF000), nextComponentAddr );   //drop bit 19
+    }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+void tabsf( uint32_t depth )
+{
+    for (size_t i = 0; i < depth; i++)
+    {
+        printf("\t");
+    }
+}
 
 
 
@@ -486,7 +597,12 @@ void read_ids()       //reads some registers
     comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );
     comArrayAdd( &infoComArray, DP_READBUF_CMD, 0x0 );
 
-    comArrayTransfer( &infoComArray );
+    reply = comArrayTransfer( &infoComArray );
+    if( reply < 0 )
+    {
+        printf( "com Error: %d\nAborting!\n", reply );
+        return;
+    }
 
     //printf( "IDCODE: 0x%08X (0x%08X)\n", myReadBuffer[2*0 + 1], myReadBuffer[2*0]);     //IDCODE
     //printf( "MEM-AP info: \n");
@@ -505,7 +621,12 @@ void read_mcu_id()
     comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );
     comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );
 
-    comArrayTransfer( &infoComArray );
+    reply = comArrayTransfer( &infoComArray );
+    if( reply < 0 )
+    {
+        printf( "com Error: %d\nAborting!\n", reply );
+        return;
+    }
 
     printf( "MCU ID: 0x%08X\n", comArrayRead( &infoComArray, nextIndex + 1 ) );     //AP ID
     printf( "MCU ID: 0x%08X\n", comArrayRead( &infoComArray, nextIndex + 4 ) );     //AP ID
