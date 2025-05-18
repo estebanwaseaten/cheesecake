@@ -5,6 +5,8 @@
  * Copyright (C) 2025 Daniel Wegkamp
  */
 
+// defines a table of debug component classes and a descriptive string.
+
 [0x01] = "ROM Table",         // System Control Space
 [0x02] = "SCS",         // Data Watchpoint Unit
 [0x03] = "DWT",         // BreakPoint Unit

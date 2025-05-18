@@ -54,6 +54,33 @@ int main( int argc, char *argv[] )
         }
     }
 
+    for( int i = 0; i < 1; i++)
+    {
+        comArray_getSWDerr();
+    }
+
+
+    uint32_t data[64] = {0};
+
+    uint32_t base = 0x08070000;
+
+    stmReadAligned( base, 64, data );      //*baseOffset = ( *baseAddr % 0x80 );
+
+    for( int i = 0; i < 8; i++ )
+    {
+        printf( "0x%08X: 0x%08X\n", base + 4*i, data[i]);
+    }
+
+    //
+
+    //probaly need to halt the processor first:
+    uint32_t data2[8] = {0};
+    stmWriteAligned( base + 0x80, 8, data2 );      //*baseOffset = ( *baseAddr % 0x80 );
+
+    comArray_getSWDerr();
+
+    return 0;
+
     // first collect some information
     detectSystem();
     //read_mcu_id();

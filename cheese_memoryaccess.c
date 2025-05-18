@@ -89,34 +89,29 @@ do we have to somehow reset the auto increment... ??? so strange!
 */
 
 
-
-// base offset needs to be aligned to 128 (0x80) bytes (corresponds to 32 words which is the smallest mutliple that the device driver will transfer (when subtracting the initialisiation data))
-// this ensures, that we stay within a region where the automatic address increase works
-int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer, uint32_t *debugBuffer )      //*baseOffset = ( *baseAddr % 0x80 );
+int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data )
 {
+    printf("stmWriteAligned()\n");
     if ( (baseAddr % 0x80) != 0 )
     {
         printf( "stmFetchAligned() error: baseAddr not aligned.\n");
         return -11;
     }
-
     comArray localCom;
-    uint32_t addressCounter = 0;
     uint32_t wordsTransferred = 0;
-    uint32_t wordsStored = 0;
+    uint32_t wordsTransferredThisRun = 0;
 
     comArrayInit( &localCom );
 
-    while( wordsTransferred < wordCount )      //loop until all words have been read!
+    while( wordsTransferred < wordCount )      //loop until all words have been received
     {
-        comArray_prepMemAccess( &localCom, 0x0, baseAddr + addressCounter * 4 );
-        uint32_t startIndex = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );     //dummy read - does not count yet
+        wordsTransferredThisRun = 0;    //important: when we are done, this variable is not updated anymore, so infinite loop would result if we do not set i t to zero.
+        comArray_prepMemAccess( &localCom, 0x0, baseAddr + wordsTransferred * 4 );        //prepare transaction
+        //comArrayAdd( &localCom, AP_WRITE3_CMD, 0x1 );          //do we need a dummy write?
 
-        uint32_t endIndexPlusOne = startIndex;
-
-        while( (wordsTransferred < wordCount) && ( wordsTransferred < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
+        while( (wordsTransferred < wordCount) && ( wordsTransferredThisRun < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
         {
-            endIndexPlusOne = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            wordsTransferredThisRun = comArrayAdd( &localCom, AP_WRITE3_CMD, data[wordsTransferred] );
             wordsTransferred++;
         }
 
@@ -126,12 +121,55 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
             printf( "com Error: %d\nAborting!\n", reply );
             return reply;
         }
+    }
+    return 0;
+}
 
-        for( int i = startIndex; i < endIndexPlusOne; i++ )
+
+
+// base offset needs to be aligned to 128 (0x80) bytes (corresponds to 32 words which is the smallest mutliple that the device driver will transfer (when subtracting the initialisiation data))
+// this ensures, that we stay within a region where the automatic address increase works
+int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer )      //*baseOffset = ( *baseAddr % 0x80 );
+{
+    printf("stmReadAligned()\n");
+    if ( (baseAddr % 0x80) != 0 )
+    {
+        printf( "stmFetchAligned() error: baseAddr not aligned.\n");
+        return -11;
+    }
+
+    comArray localCom;
+    uint32_t wordsTransferred = 0;
+    uint32_t wordsTransferredThisRun = 0;
+    uint32_t wordsStored = 0;
+
+    comArrayInit( &localCom );
+
+    while( wordsTransferred < wordCount )      //loop until all words have been received
+    {
+        wordsTransferredThisRun = 0;    //important: when we are done, this variable is not updated anymore, so infinite loop would result if we do not set i t to zero.
+        comArray_prepMemAccess( &localCom, 0x0, baseAddr + wordsStored * 4 );        //prepare transaction
+        uint32_t startIndex = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );           //dummy read - does not count yet
+
+        while( (wordsTransferred < wordCount) && ( wordsTransferredThisRun < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
+        {
+            wordsTransferredThisRun = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            wordsTransferred++;
+        }
+
+        //printf( "trabsfer prepared: currentIndex: %d, currentStart Index: %d\n",wordsTransferredThisRun,startIndex );
+
+        reply = comArrayTransfer( &localCom );
+        if( reply < 0 )
+        {
+            printf( "com Error: %d\nAborting!\n", reply );
+            return reply;
+        }
+
+        for( int i = startIndex; i < wordsTransferredThisRun; i++ )         //loop from this runs indices
         {
             returnBuffer[wordsStored] = comArrayRead( &localCom, i );
             wordsStored++;
-            addressCounter++;
         }
     }
 
@@ -140,6 +178,8 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
 
 void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
 {
+    printf("align2mem()\n");
+
 	*baseOffset = (*baseAddr % 0x80 );
 	*baseAddr -= *baseOffset;
 	*wordCount += *baseOffset / 4;
@@ -164,10 +204,10 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
     uint32_t wordOffset = baseOffset / 4;
 
     uint32_t *dataArray = calloc( newWordCount, sizeof(uint32_t) );      //64bits * 64 transfers
-    uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
+    //nt32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
 
     printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
-    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray );
     if( reply < 0 )
     {
         printf( "STM Read Error: %d\nAborting!\n", reply );
@@ -180,7 +220,7 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
         {
             printf( "0x%08X: ", i*4 + newBaseAddr );
         }
-        printf( "%08X (%08X) ", dataArray[i], debugArray[i] );          //display ACK
+        printf( "%08X ", dataArray[i] );          //display ACK
         //printf( "%08X ", dataArray[i] );                                   //do not display ACK
 
         if( ( ( i + 1 ) % 4) == 0 )
@@ -188,6 +228,40 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
             printf( "\n" );
         }
     }
+
+    free( dataArray );
+    return 0;
+}
+
+int stmFetch( uint32_t baseAddr, uint32_t wordCount, uint32_t *words )
+{
+    printf("stmFetch()\n");
+    uint32_t newWordCount = wordCount;
+    uint32_t newBaseAddr = baseAddr;
+    uint32_t baseOffset = 0;
+    align2mem( &newBaseAddr, &newWordCount, &baseOffset );    // shifts base addr to new location: baseAddr - baseOffset and increases wordCount to account for the shift
+
+    uint32_t wordOffset = baseOffset / 4;
+
+    uint32_t *dataArray = calloc( newWordCount, sizeof(uint32_t) );      //64bits * 64 transfers
+    //uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
+
+    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray );
+    if( reply < 0 )
+    {
+        printf( "STM Read Error: %d\nAborting!\n", reply );
+        return reply;
+    }
+
+    int wordCounter = 0;
+    for( int i = wordOffset; i < newWordCount; i++ )
+    {
+        words[wordCounter] = dataArray[i];
+        wordCounter++;
+    }
+
+    free( dataArray );
+    //free( debugArray );
     return 0;
 }
 
@@ -222,10 +296,10 @@ int stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the n
     uint32_t wordOffset = baseOffset / 4;
 
     uint32_t *dataArray = calloc( newWordCount, sizeof(uint32_t) );      //64bits * 64 transfers
-    uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
+    //uint32_t *debugArray = calloc( newWordCount, sizeof(uint32_t) );
 
     printf( "newBaseAddr: %d newWordCount: %d \n", newBaseAddr, newWordCount);
-    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray, debugArray );
+    reply = stmReadAligned( newBaseAddr, newWordCount, dataArray );
     if( reply < 0 )
     {
         printf( "STM Read Error: %d\nAborting!\n", reply );
@@ -239,7 +313,7 @@ int stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the n
     }
 
     free( dataArray );
-    free( debugArray );
+    //free( debugArray );
     fclose( file );
     return 0;
 }

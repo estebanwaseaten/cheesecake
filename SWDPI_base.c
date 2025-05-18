@@ -262,6 +262,7 @@ static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, 
 	/////////////////// SEEEMS TO WORK WITHOUT THIS, BUT WE LEAVE IT FOR NOW.
 	SWDGPIOBBD_sequence( (uint8_t*)swd_sequence_null, swd_sequence_null_length );		//clock at least 8 cycles
 
+	pr_info("\ncomplete transaction sequence:\n");
 	for( int i = 0; i < count; i++ )
 	{
 		pr_info("send buffer before transfer: 0x%08x data: 0x%x\n", ((uint32_t*)sendBuffer)[2*i], ((uint32_t*)sendBuffer)[2*i+1]);

@@ -13,6 +13,7 @@
 //response: [31-28] Version, [27-12] PARTNO (0xBA00 or 0xBA10), [11, 1] DESIGNER (ARM=01000111011), [0]=1
 
 #define SWD_CMD_ABORT_CMD   0x81
+#define SWD_CMD_CTRLSTAT_R   0x8D
 
 #define SWD_ACK_OK 0x001
 #define SWD_ACK_WAIT 0x010

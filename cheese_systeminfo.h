@@ -11,7 +11,15 @@
 #ifndef CHEESE_SYSTEMINFO_H
 #define CHEESE_SYSTEMINFO_H
 
-
+#define COMPONENTCLASS_NONE 0x00
+#define COMPONENTCLASS_ROM  0x01
+#define COMPONENTCLASS_SCS  0x02
+#define COMPONENTCLASS_DWT  0x03
+#define COMPONENTCLASS_BPU  0x04
+#define COMPONENTCLASS_FPB  0x05
+#define COMPONENTCLASS_ITM  0x06
+#define COMPONENTCLASS_TPIU 0x07
+#define COMPONENTCLASS_ETM  0x08
 
 struct armComponent
 {
@@ -49,9 +57,10 @@ typedef struct debugComponent
     uint32_t depth;     //for printing
     uint32_t CIDR[4];
     uint32_t PIDR[8];       //5-7 are reserved
-    uint32_t PCIDR;
 
-    uint32_t myclass;
+    uint32_t PCIDR;
+    uint8_t  dbcompindex;
+    uint32_t dbcompclass;
 
     uint32_t class;
     uint32_t memType;       //could probably reduce size of these variables...
@@ -84,13 +93,15 @@ uint8_t processARMComponent( debugComponent *thisComponent );   // ID = 0x PIDR0
 void processComponenFields( debugComponent *thisComponent );
 
 int extractComponent( debugComponent *thisComponent );
-int extractROMtable( debugComponent *thisComponent );
-int extractCoreSight( debugComponent *thisComponent );
-int extractgenericIP( debugComponent *thisComponent );
-
 int extractComponentBaseInfo( debugComponent *thisComponent );
-
 void printComponentBaseInfo( debugComponent *thisComponent );
+
+    int extractROMtable( debugComponent *thisComponent );
+    int extractCoreSight( debugComponent *thisComponent );
+    int extractgenericIP( debugComponent *thisComponent );
+
+        int extractSCScomponent( debugComponent *thisComponent );
+
 
 
 int extractAccessPort( int i, APinfo *currentAP );

@@ -1,10 +1,10 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+ // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *
  *
  * Copyright (C) 2025 Daniel Wegkamp
  */
-
+[0x003] = "Cortex M4 FPB",
 [0x008] = "Cortex-M0+ SCS",         // System Control Space
 [0x00A] = "Cortex-M0+ DWT",         // Data Watchpoint Unit
 [0x00B] = "Cortex-M0+ BPU",         // BreakPoint Unit
@@ -16,6 +16,7 @@
 [0x433] = "STM32F401xD/E",
 [0x440] = "STM32F05xxx/F030x8",     //
 [0x442] = "STM32F030xC",
+[0x446] = "STM32F302xD(E)/303xD(E)/STM32F398xx",
 [0x925] = "Cortex-M4 ETM",
 [0x9A1] = "Cortex-M3/M4 TPIU"
 /* EOF */

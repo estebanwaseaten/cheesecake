@@ -47,7 +47,7 @@ extern int reply;
 
 int detectSystem( void )
 {
-    // depending on the Serial Wire Debug Command (cheese_comSWD.c) either Debug Port Registers or Access Port registers are read or written to
+    // depending on the Serial Wire Debug Command (see cheese_registers.h) either Debug Port Registers or Access Port registers are read or written to
 
     //scan ACCESS PORTS:
     APinfo myAccessPorts[10];
@@ -201,9 +201,6 @@ int extractAccessPort( int i, APinfo *currentAP )
 
 
 
-
-
-
 // * IHI0031G_debug_interface_v5_2_architecture_specification.pdf
 // ** IHI0074E_debug_interface_v6_0_architecture_specification.pdf
 // *** IHI0029F_coresight_v3_0_architecture_specification.pdf
@@ -224,23 +221,11 @@ int extractComponentBaseInfo( debugComponent *thisComponent )
     // Any ROM Table must implement a set of Component and Peripheral ID Registers, that start at offset 0xFD0
     //0xF00-0xFFC are the CoreSight management registers - common to all CoreSight Components
     //0xFCC -> memtype
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFCC
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFCC      //delayed by 1
 
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFD0 (PIDR4)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFD4 (PIDR5)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFD8 (PIDR6)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFDC (PIDR7)
-
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFE0 (PIDR0)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFE4 (PIDR1)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFE8 (PIDR2)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFEC (PIDR3)
-
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFF0 (CIDR0)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFF4 (CIDR1)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFF8 (CIDR2)
-    comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // 0xFFC (CIDR3)
+    for( int i = 0; i < 14; i++ )
+    {
+        comArrayAdd( &infoComArray, AP_READ3_CMD, 0x0 );   // starting at 0xFCC ending at 0xFFC
+    }
 
     reply = comArrayTransfer( &infoComArray );
     if( reply  < 0 )
@@ -320,7 +305,7 @@ int extractComponent( debugComponent *thisComponent )
 
 int extractROMtable( debugComponent *thisComponent )
 {
-    tabsf( thisComponent->depth ); printf( "*** extractROMtable\n" );
+    tabsf( thisComponent->depth ); printf( "*** extractROMtable:\n" );
 
     comArray localComArray;
     comArrayInit( &localComArray );
@@ -365,31 +350,57 @@ int extractROMtable( debugComponent *thisComponent )
             }
         }
     }
-
     tabsf( thisComponent->depth ); printf( "*** found %d ROM table entries\n", thisComponent->componentROMtable->compCount );
-
     //process the components of the rom table
     for( int i = 0; i < thisComponent->componentROMtable->compCount; i++ )
     {
         reply = extractComponent( &thisComponent->componentROMtable->components[i] );
     }
-    //tabsf( depth );printf( "(found %d entries in ROM table!)\n\n", subRomCount );
     return 0;
 }
 
-
-
-
-
 int extractCoreSight( debugComponent *thisComponent )
 {
+    tabsf( thisComponent->depth ); printf( "*** extractCoreSight:\n" );
     return 0;
 }
 
 int extractgenericIP( debugComponent *thisComponent )
 {
+    tabsf( thisComponent->depth ); printf( "*** extractgenericIP:\n" );
+
+    //
+    switch( thisComponent->dbcompclass )
+    {
+        case COMPONENTCLASS_SCS:
+            extractSCScomponent( thisComponent );
+            break;
+    }
+
+
+
+
     return 0;
 }
+
+int extractSCScomponent( debugComponent *thisComponent )
+{
+    uint32_t registersSCB[0x40] = {0};
+    stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCB );
+    for( int i = 0; i < 0x40; i++ )
+    {
+        printf( "SCB[0x%X]: 0x%08X\n", i*4, registersSCB[i] );
+    }
+    //stmFetch( thisComponent->baseAddr + 0xDF0, 4, registersDCB );
+
+
+
+
+}
+
+
+
+
 
 void printComponentBaseInfo( debugComponent *thisComponent )
 {
@@ -397,6 +408,10 @@ void printComponentBaseInfo( debugComponent *thisComponent )
     tabsf( thisComponent->depth );printf( "PartNo 0x%X (%s); jedec: %d; JEPID 0x%X;  JEPcont 0x%X\n", thisComponent->partNo, arm_partno[thisComponent->partNo], thisComponent->jedec, thisComponent->JEP106id, thisComponent->JEP106cont );
     tabsf( thisComponent->depth );printf( "CIDR 0-3: 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponent->CIDR[0], thisComponent->CIDR[1], thisComponent->CIDR[2], thisComponent->CIDR[3]);
     tabsf( thisComponent->depth );printf( "PIDR 0-4: 0x%08X, 0x%08X, 0x%08X, 0x%08X, 0x%08X\n", thisComponent->PIDR[0], thisComponent->PIDR[1], thisComponent->PIDR[2], thisComponent->PIDR[3], thisComponent->PIDR[4]);
+    //tabsf( thisComponent->depth );printf( "PCIDR: 0x%08X\n", thisComponent->PCIDR );
+    tabsf( thisComponent->depth );printf( "manufacturer: %s\n", jep106[thisComponent->JEP106cont][thisComponent->JEP106id-1] );
+    tabsf( thisComponent->depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n", thisComponent->size, thisComponent->revision, thisComponent->revand );
+    tabsf( thisComponent->depth );printf("***** identified as: %s\n", arm_comp[thisComponent->dbcompindex].description);
 }
 
 void processComponenFields( debugComponent *thisComponent )
@@ -420,6 +435,18 @@ void processComponenFields( debugComponent *thisComponent )
     thisComponent->PCIDR |= (thisComponent->PIDR[1] & 0xFF) << 16;
     thisComponent->PCIDR |= (thisComponent->PIDR[2] & 0xFF) << 8;
     thisComponent->PCIDR |= (thisComponent->CIDR[1] & 0xFF) << 0;
+
+    //defaults:
+    thisComponent->dbcompindex = 0;
+    thisComponent->dbcompclass = 0x0;
+    for( int i = 0; i < 0xFF; i++ )     //look up the PCIDR in the arm_comp[] table.
+    {
+        if( arm_comp[i].ID == thisComponent->PCIDR )
+        {
+            thisComponent->dbcompindex = i;
+            thisComponent->dbcompclass = arm_comp[i].componentClass;
+        }
+    }
 }
 
 /*
@@ -456,9 +483,6 @@ int extractComponent( uint32_t base, uint32_t depth )
         return -8;
     }
 
-    tabsf( depth );printf( "Peripheral OD: 0x%02X%02X%02X%02X%02X\n", thisComponentInfo.PIDR[4] & 0xFF, thisComponentInfo.PIDR[3] & 0xFF, thisComponentInfo.PIDR[2] & 0xFF, thisComponentInfo.PIDR[1] & 0xFF, thisComponentInfo.PIDR[0] & 0xFF );
-    tabsf( depth );printf( "manufacturer: %s\n", jep106[thisComponentInfo.JEP106cont][thisComponentInfo.JEP106id-1] );
-    tabsf( depth );printf( "size: %d, revision: 0x%X, revand: 0x%X\n\n", thisComponentInfo.size, thisComponentInfo.revision, thisComponentInfo.revand );
 
     uint8_t thisComponentClass;
     tabsf( depth );printf("***** identified as: "); thisComponentClass = processARMComponent( &thisComponentInfo );

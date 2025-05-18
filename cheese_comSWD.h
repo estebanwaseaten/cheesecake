@@ -35,5 +35,7 @@ int comArray_prepMemAccess( comArray *myComArray, uint8_t accessPort, uint32_t m
 uint32_t comArrayRead( comArray *myComArray, uint32_t index );       //index starts at 0
 int comArrayTransfer( comArray *myComArray );
 
+int comArray_getSWDerr();
+
 
 #endif

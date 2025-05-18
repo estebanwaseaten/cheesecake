@@ -64,7 +64,7 @@ int SWDGPIOBBD_transfer( uint64_t *cmd )		//high level or low level transfer
 		else
 		{
 			//write
-			*ack = 2;
+			*ack = 2;	//pretend we have to wait
 			while( (*ack == 2) && (abortcounter < 100) )
 			{
 				SWDGPIOBBD_command( lowLevelCmd );
@@ -101,7 +101,24 @@ int SWDGPIOBBD_abort( void )
 	uint8_t cmd = SWD_CMD_ABORT_CMD;
 	uint32_t data = 0x1F;
 
-	//could first read error flags:
+
+
+	// first read error flags from CTRLSTAT:
+	uint32_t ctrlstat = 0;
+	SWDGPIOBBD_command( SWD_CMD_CTRLSTAT_R );	//send cmd
+	SWDGPIOBBD_cycleTurnaround2Read();
+	SWDGPIOBBD_receiveAck( &ack );
+	SWDGPIOBBD_receiveData( &ctrlstat );
+	SWDGPIOBBD_cycleTurnaround2Write();
+	pr_info("ctrlstat: 0x%08X (ack: %x)\n", ctrlstat, ack );
+	if( ctrlstat & 0x20 ) //sticky error
+	{
+		pr_info( "stickerr detected\n" );
+	}
+	if( ctrlstat & 0x80 ) //sticky write data error	(parity problem)
+	{
+		pr_info( "write data/parity error detected\n" );
+	}
 
 	while( (ack == 2) && (abortcounter < 100) )
 	{
@@ -256,8 +273,9 @@ int SWDGPIOBBD_sendData( uint32_t *data )
    SWDGPIOBBD_cycleWrite( parityCount & 0x1 );	//parity bit - 1 for odd
 
    // according to the STM stm32f303 reference manual after sending data one should add two low cycles... it seemed to work without it, but maybe its important
- //  SWDGPIOBBD_cycleWrite( 0 );
- //  SWDGPIOBBD_cycleWrite( 0 );
+   //SWDGPIOBBD_cycleWrite( 0 );
+   //SWDGPIOBBD_cycleWrite( 0 );
+
 
 	return 0;
 }

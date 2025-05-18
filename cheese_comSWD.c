@@ -61,16 +61,37 @@ int comArrayClear( comArray *myComArray )
     return 0;
 }
 
+int comArray_getSWDerr()
+{
+    comArray myComArray;
+    comArrayInit( &myComArray );
+    comArrayClear( &myComArray );
+    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
+    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
+    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );                      //reset
+    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );           // power up debug and ... domain
+    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );                      // select AP 0, bank 0
+    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //read CSW
+    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //twice?
+
+    comArrayTransfer( &myComArray );
+
+    printf( "CTRL/STAT: 0x%08X\n", comArrayRead( &myComArray, 1 ) );
+    printf( "AP CSW rg: 0x%08X\n", comArrayRead( &myComArray, 6 ) );
+
+    uint32_t result = comArrayRead( &myComArray, 1 );
+
+    comArrayDestroy( &myComArray );
+    return result;
+}
+
+
 //prepare communication with access point (memory access)
 int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t accessPortBank )    //selects AP [31:24] = 0x0, bank [7:4] = 0xF
 {
     uint32_t selectRegister = (((uint32_t)accessPort) << 24) | (((uint32_t)accessPortBank) << 4);
 
-
-    //printf("comArray_prepAPaccess(): selectRegister: 0x%08X\n", selectRegister);
-    //clear com array
     comArrayClear( myComArray );
-
     comArrayAdd( myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
     comArrayAdd( myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
     comArrayAdd( myComArray, DP_ABORT_CMD, 0x1E );                      //clean sticky errors
@@ -88,7 +109,7 @@ int comArray_prepMemAccess( comArray *myComArray, uint8_t accessPort, uint32_t m
     comArray_prepAPaccess( myComArray, accessPort, 0 );
 
     //configure AP Control/Status Word register (CSW) register:
-    comArrayAdd( myComArray, AP_WRITE0_CMD, 0x22000012 );               // CSW --> auto increment addr
+    comArrayAdd( myComArray, AP_WRITE0_CMD, 0x22000012 );               // CSW --> auto increment addr 0x22000012 or 0xA2000012
 
     //write starting Transfer Address Register (TAR):
     int reply = comArrayAdd( myComArray, AP_WRITE1_CMD, memBase );
