@@ -54,16 +54,12 @@ int main( int argc, char *argv[] )
         }
     }
 
-    for( int i = 0; i < 1; i++)
+    /*for( int i = 0; i < 1; i++)
     {
         comArray_getSWDerr();
     }
-
-
     uint32_t data[64] = {0};
-
     uint32_t base = 0x08070000;
-
     stmReadAligned( base, 64, data );      //*baseOffset = ( *baseAddr % 0x80 );
 
     for( int i = 0; i < 8; i++ )
@@ -79,7 +75,7 @@ int main( int argc, char *argv[] )
 
     comArray_getSWDerr();
 
-    return 0;
+    return 0;*/
 
     // first collect some information
     detectSystem();

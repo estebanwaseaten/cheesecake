@@ -65,7 +65,7 @@ int comArray_getSWDerr()
 {
     comArray myComArray;
     comArrayInit( &myComArray );
-    comArrayClear( &myComArray );
+    //comArrayClear( &myComArray );
     comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
     comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
     comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );                      //reset
