@@ -78,16 +78,22 @@ int main( int argc, char *argv[] )
     return 0;*/
 
     // first collect some information
-    detectSystem();
+    //detectSystem();
     //read_mcu_id();
 
     //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
     if( strcmp(argstr1, "") == 0 )
     {
+        cheese_test();
         //int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
         //read_ids( cake );
         //read_mcu_id( cake );
+    }
+    else if( strcmp(argv[1], "-info") == 0 ) // -filedump filename #ofWords
+    {
+        printf( "-info\n");
+        detectSystem();
     }
     else if( strcmp(argv[1], "-fileprint") == 0 ) // -filedump filename #ofWords
     {

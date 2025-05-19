@@ -36,6 +36,7 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index );       //index sta
 int comArrayTransfer( comArray *myComArray );
 
 int comArray_getSWDerr();
-
+void comArray_writeWord( uint32_t addr, uint32_t word );
+uint32_t comArray_readWord( uint32_t addr );
 
 #endif

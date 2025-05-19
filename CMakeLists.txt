@@ -13,6 +13,7 @@ add_compile_options(-pg ) 		# -Wall -Wextra
 
 set(SOURCE_LIST
 	"cheese_utils.c"
+	"cheese_test.c"
 	"cheese_comSWD.c"
 	"cheese_systeminfo.c"
 	"cheese_memoryaccess.c"

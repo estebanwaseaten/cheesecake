@@ -15,6 +15,7 @@ void color_green();
 void color_blue();
 void color_white();
 
+void cheese_test( void );
 
 
 #endif

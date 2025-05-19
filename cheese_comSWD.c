@@ -61,29 +61,7 @@ int comArrayClear( comArray *myComArray )
     return 0;
 }
 
-int comArray_getSWDerr()
-{
-    comArray myComArray;
-    comArrayInit( &myComArray );
-    //comArrayClear( &myComArray );
-    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
-    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
-    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );                      //reset
-    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );           // power up debug and ... domain
-    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );                      // select AP 0, bank 0
-    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //read CSW
-    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //twice?
 
-    comArrayTransfer( &myComArray );
-
-    printf( "CTRL/STAT: 0x%08X\n", comArrayRead( &myComArray, 1 ) );
-    printf( "AP CSW rg: 0x%08X\n", comArrayRead( &myComArray, 6 ) );
-
-    uint32_t result = comArrayRead( &myComArray, 1 );
-
-    comArrayDestroy( &myComArray );
-    return result;
-}
 
 
 //prepare communication with access point (memory access)
@@ -184,4 +162,74 @@ int comArrayTransfer( comArray *myComArray )
 
     close( SWDPIfile );
     return 0;
+}
+
+int comArray_getSWDerr()
+{
+    comArray myComArray;
+    comArrayInit( &myComArray );
+    //comArrayClear( &myComArray );
+    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );                      //first command always idcode
+    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
+    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );                      //reset
+    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );           // power up debug and ... domain
+    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );                      // select AP 0, bank 0
+    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //read CSW
+    comArrayAdd( &myComArray, AP_READ0_CMD, 0x0 );                       //twice?
+
+    comArrayTransfer( &myComArray );
+
+    printf( "CTRL/STAT: 0x%08X\n", comArrayRead( &myComArray, 1 ) );
+    printf( "AP CSW rg: 0x%08X\n", comArrayRead( &myComArray, 6 ) );
+
+    uint32_t result = comArrayRead( &myComArray, 1 );
+
+    comArrayDestroy( &myComArray );
+    return result;
+}
+
+uint32_t comArray_readWord( uint32_t addr )
+{
+    comArray myComArray;
+    comArrayInit( &myComArray );
+
+    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
+    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );
+    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );  //write CTRL/STAT
+    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );             //select AP0, bank0
+    comArrayAdd( &myComArray, AP_WRITE0_CMD, 0x22000012 );       //write CSW
+
+    comArrayAdd( &myComArray, AP_WRITE1_CMD, addr );
+    comArrayAdd( &myComArray, AP_READ3_CMD, 0x0 );
+    comArrayAdd( &myComArray, DP_READBUF_CMD, 0x0 );
+
+    comArrayTransfer( &myComArray );
+    uint32_t result = comArrayRead( &myComArray, 8 );
+    comArrayDestroy( &myComArray );
+
+    return result;
+}
+
+void comArray_writeWord( uint32_t addr, uint32_t word )
+{
+    comArray myComArray;
+    comArrayInit( &myComArray );
+
+    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );
+    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
+    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );
+    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );  //write CTRL/STAT
+    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );             //select AP0, bank0
+    comArrayAdd( &myComArray, AP_WRITE0_CMD, 0x22000012 );       //write CSW
+
+    comArrayAdd( &myComArray, AP_WRITE1_CMD, addr );
+    comArrayAdd( &myComArray, AP_WRITE3_CMD, word );
+    comArrayAdd( &myComArray, AP_WRITE3_CMD, word );
+
+    //anything more???
+    comArrayTransfer( &myComArray );
+
+    comArrayDestroy( &myComArray );
+
 }
