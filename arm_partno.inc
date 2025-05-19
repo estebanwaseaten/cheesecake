@@ -11,12 +11,15 @@
 [0x00C] = "Cortex-M4 SCS",
 [0x4c0] = "Cortex-M0+ ROM",
 [0x411] = "STM32F2xxxx",            // from cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics-1.pdf
-[0x417] = "STM32L0x3 maybe?",
+[0x417] = "STM32L05x?",
 [0x423] = "STM32F401xB/C",
 [0x433] = "STM32F401xD/E",
-[0x440] = "STM32F05xxx/F030x8",     //
-[0x442] = "STM32F030xC",
-[0x446] = "STM32F302xD(E)/303xD(E)/STM32F398xx",
+[0x438] = "STM32F303x6/8 & STM32F328",
+[0x440] = "STM32F05xxx/F030x8",
+[0x442] = "STM32F030xB/C & STM32F358",
+[0x446] = "STM32F302xD/E & STM32F398xE",
+[0x447] = "STM32L07x??",
 [0x925] = "Cortex-M4 ETM",
-[0x9A1] = "Cortex-M3/M4 TPIU"
+[0x9A1] = "Cortex-M3/M4 TPIU",
+[0xC60] = "Cortex-M0+",
 /* EOF */

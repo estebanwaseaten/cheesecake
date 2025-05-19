@@ -27,6 +27,23 @@ void cheese_test( void )
 //    printf( "test new comArray_readWord(): 0x%08X\n", comArray_readWord( base ) );
 
 
+    //HALT ON RESET:
+        /*To Halt on reset, it is necessary to:
+        • enable the bit0 (VC_CORRESET) of the Debug and Exception Monitor Control Register
+        • enable the bit0 (C_DEBUGEN) of the Debug Halting Control and Status Register
+        */
+
+    //read a few MCU device ID code locations:
+
+
+
+    printf( "0xE0042000: 0x%08X\n", comArray_readWord( 0xE0042000 ) & 0xFFF );      //STM32F303
+    printf( "0x40015800: 0x%08X\n", comArray_readWord( 0x40015800 ) & 0xFFF );      //STM32L053
+    printf( "0xE00E4000: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
+    printf( "0xE000ED00: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
+
+
+    return;
 
     // write 0xA05F0003 into DHCSR to HALT the core.        (10100000010111110000000000000011)
     // set VC_CORERESET Bit in DEMCR to HALT after reset

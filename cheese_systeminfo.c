@@ -109,9 +109,9 @@ int detectSystem( void )
 
 
     printf( "scanning for access points: \n");
-    while( !done && (APcount < 10 ))
+    while( !done && (APcount < 10 ))                        // access port adresses are per byte?
     {
-        int nextIndex = comArray_prepAPaccess( &infoComArray, APcount*4, 0xF );        //NOT SURE ABOUT *4         //selects AP and AP bank
+        int nextIndex = comArray_prepAPaccess( &infoComArray, APcount, 0xF );        //NOT SURE ABOUT *4         //selects AP and AP bank
         //printf("nextIndex: %d\n", nextIndex);
 
         //read ACCESS PORT REGISTERS
@@ -386,15 +386,17 @@ int extractgenericIP( debugComponent *thisComponent )
 
 int extractSCScomponent( debugComponent *thisComponent )
 {
-    uint32_t registersSCB[0x40] = {0};
+    //uint32_t registersSCB[0x40] = {0};
+    //stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCB );
+    uint32_t cpuid = comArray_readWord( thisComponent->baseAddr + 0xD00 );      //same, just checking
 
-    stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCB );
-    for( int i = 0; i < 0x40; i++ )
-    {
-        //printf( "SCB[0x%08X]: 0x%08X\n", thisComponent->baseAddr + 0xD00 + i*4, registersSCB[i] );
-    }
-    //stmFetch( thisComponent->baseAddr + 0xDF0, 4, registersDCB );
-    
+    tabsf( thisComponent->depth );printf( "SCS CPUID: 0x%08X (%s)\n", cpuid, arm_partno[(cpuid >> 4) & 0xFFF] );
+
+    //this is from the datasheet though...
+
+
+    uint32_t flash_size = comArray_readWord( 0x1FF8007C ) & 0xFFFF;
+    tabsf( thisComponent->depth );printf( "flash size: %d kB\n", flash_size );
 
 
 }
@@ -449,6 +451,22 @@ void processComponenFields( debugComponent *thisComponent )
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /*
 int extractComponent( uint32_t base, uint32_t depth )
@@ -585,6 +603,14 @@ int extractComponent( uint32_t base, uint32_t depth )
 
     return 0;
 }*/
+
+
+
+
+
+
+
+
 
 
 
