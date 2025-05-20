@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
-*
-*
+*  Initial Strategy was: using the debug port to access all the possible information and somehow extract the exact model of the chip.
+*  Easier might be: probe a few MCU device ID code locations and see if we can identify the chip agains a list of known chips...
+*  Short term goal though is to get any data written onto the flash memory...
+*      
 * Copyright (C) 2025 Daniel Wegkamp
 */
 
@@ -22,10 +24,6 @@ int reply;
 
 int main( int argc, char *argv[] )
 {
-    //printf("param1: %s\n", argv[1]);
-    //printf("param2: %s\n", argv[2]);
-    //printf("param3: %s\n", argv[3]);
-
     char *nullstr = "";
     char *argstr1 = nullstr;
     char *argstr2 = nullstr;
@@ -53,35 +51,6 @@ int main( int argc, char *argv[] )
             }
         }
     }
-
-    /*for( int i = 0; i < 1; i++)
-    {
-        comArray_getSWDerr();
-    }
-    uint32_t data[64] = {0};
-    uint32_t base = 0x08070000;
-    stmReadAligned( base, 64, data );      //*baseOffset = ( *baseAddr % 0x80 );
-
-    for( int i = 0; i < 8; i++ )
-    {
-        printf( "0x%08X: 0x%08X\n", base + 4*i, data[i]);
-    }
-
-    //
-
-    //probaly need to halt the processor first:
-    uint32_t data2[8] = {0};
-    stmWriteAligned( base + 0x80, 8, data2 );      //*baseOffset = ( *baseAddr % 0x80 );
-
-    comArray_getSWDerr();
-
-    return 0;*/
-
-    // first collect some information
-    //detectSystem();
-    //read_mcu_id();
-
-    //printf("didit! %s, %s, %d, %d\n", argstr2, argstr3, (int)param2, (int)param3);
 
     if( strcmp(argstr1, "") == 0 )
     {

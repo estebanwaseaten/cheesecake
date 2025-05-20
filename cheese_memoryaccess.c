@@ -131,7 +131,7 @@ int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data )
 // this ensures, that we stay within a region where the automatic address increase works
 int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer )      //*baseOffset = ( *baseAddr % 0x80 );
 {
-    printf("stmReadAligned()\n");
+    //printf("stmReadAligned()\n");
     if ( (baseAddr % 0x80) != 0 )
     {
         printf( "stmFetchAligned() error: baseAddr not aligned.\n");
@@ -178,7 +178,7 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
 
 void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
 {
-    printf("align2mem()\n");
+    //printf("align2mem()\n");
 
 	*baseOffset = (*baseAddr % 0x80 );
 	*baseAddr -= *baseOffset;
@@ -235,7 +235,7 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
 
 int stmFetch( uint32_t baseAddr, uint32_t wordCount, uint32_t *words )
 {
-    printf("stmFetch()\n");
+    //printf("stmFetch()\n");
     uint32_t newWordCount = wordCount;
     uint32_t newBaseAddr = baseAddr;
     uint32_t baseOffset = 0;

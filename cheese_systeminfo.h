@@ -101,6 +101,9 @@ void printComponentBaseInfo( debugComponent *thisComponent );
     int extractgenericIP( debugComponent *thisComponent );
 
         int extractSCScomponent( debugComponent *thisComponent );
+        int extractBPUComponent( debugComponent *thisComponent );
+        int extractDWTComponent( debugComponent *thisComponent );
+
 
 
 

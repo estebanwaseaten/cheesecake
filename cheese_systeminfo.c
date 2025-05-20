@@ -37,14 +37,10 @@ struct armComponent arm_comp[0xFF] = {
 
 extern int reply;
 
-
-
 // collecting information about the system via Serial Wire Debug (SW-DB)
 // the STM32 (cortex-M based microcontrollers) allow debug access via the SW-DB
 // via the SW-DB one or more Access Ports (AP) can be probed
 // These APs consist of certain registers and a tree-like structure of components that describe/reflect the actual MCU system
-
-
 
 int detectSystem( void )
 {
@@ -376,6 +372,14 @@ int extractgenericIP( debugComponent *thisComponent )
         case COMPONENTCLASS_SCS:
             extractSCScomponent( thisComponent );
             break;
+        case COMPONENTCLASS_BPU:
+            extractBPUComponent( thisComponent );
+            break;
+        case COMPONENTCLASS_DWT:
+            extractDWTComponent( thisComponent );
+            break;
+        default:
+            break;
     }
 
 
@@ -384,19 +388,45 @@ int extractgenericIP( debugComponent *thisComponent )
     return 0;
 }
 
+// The Cortex®-M0+ BPU implementation provides four breakpoint registers
+int extractBPUComponent( debugComponent *thisComponent )        //Break Point Unit
+{
+
+}
+
+// The Cortex®-M0+ DWT implementation provides two watchpoint register sets
+int extractDWTComponent( debugComponent *thisComponent )        //Data Watchpoint
+{
+
+}
+
 int extractSCScomponent( debugComponent *thisComponent )
 {
-    //uint32_t registersSCB[0x40] = {0};
-    //stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCB );
-    uint32_t cpuid = comArray_readWord( thisComponent->baseAddr + 0xD00 );      //same, just checking
+    //starts with CPUID at 0xD00 and ends with DEMCR at 0xDFC
 
+    uint32_t registersSCS[0x40] = {0};
+    stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCS );
+
+    uint32_t cpuid = registersSCS[0];
     tabsf( thisComponent->depth );printf( "SCS CPUID: 0x%08X (%s)\n", cpuid, arm_partno[(cpuid >> 4) & 0xFFF] );
+    tabsf( thisComponent->depth );printf( "ICSR: 0x%08X \n", registersSCS[1] );
+    tabsf( thisComponent->depth );printf( "VTOR: 0x%08X \n", registersSCS[2] );
+    tabsf( thisComponent->depth );printf( "AIRCR: 0x%08X \n", registersSCS[3] );
+    tabsf( thisComponent->depth );printf( "SCR: 0x%08X \n", registersSCS[4] );
+    tabsf( thisComponent->depth );printf( "CCR: 0x%08X \n", registersSCS[5] );
 
-    //this is from the datasheet though...
+    tabsf( thisComponent->depth );printf( "DHCSR: 0x%08X \n", registersSCS[60] );
+    tabsf( thisComponent->depth );printf( "DCRSR: 0x%08X \n", registersSCS[61] );
+    tabsf( thisComponent->depth );printf( "DCRDR: 0x%08X \n", registersSCS[62] );
+    tabsf( thisComponent->depth );printf( "DEMCR: 0x%08X \n", registersSCS[63] );
 
 
-    uint32_t flash_size = comArray_readWord( 0x1FF8007C ) & 0xFFFF;
-    tabsf( thisComponent->depth );printf( "flash size: %d kB\n", flash_size );
+    //tabsf( thisComponent->depth );printf( "test: 0x%08X\n", comArray_readWord( thisComponent->baseAddr + 0xD0C ) );
+
+
+//    uint32_t flash_size = comArray_readWord( 0x1FF8007C ) & 0xFFFF;
+//    tabsf( thisComponent->depth );printf( "flash size: %d kB\n", flash_size );
+//      WHY
 
 
 }
