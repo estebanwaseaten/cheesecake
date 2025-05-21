@@ -13,6 +13,7 @@
 #include "cheese_comSWD.h"
 #include "cheese_registers.h"
 
+//these offsets depend on the STM
 #define OFFSET_FLASH_ACR 0x00
 #define OFFSET_FLASH_KEYR 0x04
 #define OFFSET_FLASH_OPTKEYR 0x08
@@ -22,12 +23,28 @@
 #define OFFSET_FLASH_OBR 0x1C
 #define OFFSET_FLASH_WRPR 0x20
 
+// system control space: cortex M0: 0xFFF0F003
+// Debug 0xE000EDF0-0xE000EEFFc
+#define OFFSET_DBG_IDCODE 0x00
+#define OFFSET_DBG_CR 0x04
+#define OFFSET_DBG_APB1_FZ 0x08
+#define OFFSET_DBG_APB2_FZ 0x0C
+
+//#define OFFSET_DBG_DFSR 0xDF0
+#define DBG_DHCSR 0xE000EDF0        // 2. enable the bit0 (C_DEBUGEN) --> HALT
+#define DBG_DCRSR 0xE000EDF4
+#define DBG_DCRDR 0xE000EDF8
+#define DBG_DEMCR 0xE000EDFC         // 1. enable the bit0 (VC_CORRESET)...
+#define SCS_AIRCR 0xE000ED0C
+
+
 
 struct mcuInfo
 {
     uint32_t    partno;
     uint32_t    baseDBG;
     uint32_t    baseFLASH;
+
     const char  description[64];
 };
 
@@ -47,6 +64,16 @@ void cheese_test( void )
     uint32_t partno = 0;
     uint32_t partindex = 0;
 
+
+
+    //FLASH MIGHT BE 16bit...
+    /*
+
+The issue is that you can also access flash with 16-bit access not 32. When I changed the DAP CSW to give 16-bit access the problem goes away :)
+Related Content
+
+*/
+
     //find partno... either from RomTable or from MCU registers:
 //    printf( "0x40015800 (MCU_IDCODE): 0x%08X\n", comArray_readWord( 0x40015800 ) & 0xFFF );      //STM32L053
 //    printf( "0xE0042000: 0x%08X\n", comArray_readWord( 0xE0042000 ) & 0xFFF );      //STM32F303
@@ -65,39 +92,82 @@ void cheese_test( void )
             printf( "debug base: 0x%08X\nflash base: 0x%08X\n", debugBaseAddr, flashBaseAddr );
         }
     }
+    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( DBG_DEMCR ) );
+    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( DBG_DHCSR ) );
 
-    printf( "0x08003000: 0x%08X \n", comArray_readWord( 0x08003000 ) );    //FLASH_PEKEYR
+
     printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
     printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
     printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );
     printf( "FLASH (OFFSET_FLASH_WRPR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_WRPR ) );
 
+/*define sequences for different MCUs like (sequences off address value pairs)
+    - set halt on reset,
+    - unset halt on reset,
+    - reset,
+    - ...
+    */
+
+    printf( "before 0x20000000: 0x%08X \n", comArray_readWord( 0x20000000 ) );
+
 
     comArray myCom;
     comArrayInit( &myCom );
     comArray_prepAPaccess( &myCom, 0, 0);
-    comArrayAdd( &myCom, AP_WRITE0_CMD, 0x22000002 );               // CSW --> no auto increment
-    //write starting Transfer Address Register (TAR):
-    comArrayAdd( &myCom, AP_WRITE1_CMD, flashBaseAddr + OFFSET_FLASH_KEYR );
+    comArrayAdd( &myCom, AP_WRITE0_CMD, 0x23000002 );               // CSW --> no auto increment 0x23000012???              0x23000001 --> half words
+
+    //To Halt on reset:
+    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );          // set VC_CORERESET in DBG_DEMCR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0001 );          // set C_DEBUGEN in DBG_DHCSR
+
+    //unhalt on reset:
+//    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
+//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );          // unset VC_CORERESET in DBG_DEMCR
+//    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
+//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0000 );          // unset C_DEBUGEN in DBG_DHCSR
+
+    //to reset:
+    comArrayAdd( &myCom, AP_WRITE1_CMD, SCS_AIRCR );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x05FA0004 );
+
+    // write to ram:
+    comArrayAdd( &myCom, AP_WRITE1_CMD, 0x20000000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0xFF00FF00 );
+
+
+    comArrayTransfer( &myCom );
+
+
+
+    printf( "after 0x20000000: 0x%08X\n", comArray_readWord( 0x20000000 ) );
+return;
+
+/*
+    comArrayAdd( &myCom, AP_WRITE1_CMD, flashBaseAddr + OFFSET_FLASH_KEYR );    //system dependent
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0x45670123 );
-    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x45670123 );
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0xCDEF89AB );
 
     comArrayAdd( &myCom, AP_WRITE1_CMD, flashBaseAddr + OFFSET_FLASH_CR );
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
 
-    //comArrayAdd( &myCom, AP_WRITE1_CMD, 0x08003000 );
-    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
+    comArrayAdd( &myCom, AP_WRITE1_CMD, 0x08004000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1111 ); */
 
     //comArrayAdd( &myCom, AP_WRITE1_CMD, 0x08003000 );
     //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );
     //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );
     //comArrayAdd( &myCom, AP_WRITE3_CMD, 0xFFF000F0 );
 
-    comArrayTransfer( &myCom );
 
-    printf( "0x08003000: 0x%08X \n", comArray_readWord( 0x08003000 ) );    //FLASH_PEKEYR
+
+
     printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
     printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
     printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );    //printf( "0x08003004: 0x%08X \n", comArray_readWord( 0x08003004 ) );
@@ -138,6 +208,7 @@ void cheese_test( void )
     //STM32L0x3                 Option bytes register (FLASH_OPTR): 0x1C
     //STM32L0x3                 Write protection register 1 (FLASH_WRPROT1): 0x20
     //STM32L0x3                 Write protection register 2 (FLASH_WRPROT2): 0x80
+
 
     printf( "FLASH (FLASH_ACR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x00 ) );
     printf( "FLASH (FLASH_PECR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x04 ) );

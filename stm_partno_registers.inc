@@ -5,7 +5,8 @@
  * Copyright (C) 2025 Daniel Wegkamp
  */
 
-// { partno, dbgbase, description (max 64 chars)}
+// { partno, dbgbase, flash, flash offsets, description (max 64 chars)}
+// flash offsets: acr, sr maybe should define unlock sequences etc...
 { 0x411, 0x00000000, 0x00000000, "STM32F2xxxx" },
 { 0x417, 0x40015800, 0x40022000, "STM32L05x?" },
 { 0x423, 0x00000000, 0x00000000, "STM32F401xB/C" },

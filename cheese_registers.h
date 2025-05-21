@@ -47,6 +47,7 @@
 // see ARM document 6-10
 //contains transfer mode bits: normal, pushed verify and pushed compare mode
 
+
 //DP_SELECT selects ACCESS PORT
 // [31...24] APSEL      --> selects AP
 // [23...8]  RAZ/SBZ    --> ?
