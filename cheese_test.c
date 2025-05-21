@@ -123,21 +123,21 @@ Related Content
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0001 );          // set C_DEBUGEN in DBG_DHCSR
 
     //unhalt on reset:
-//    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
-//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );          // unset VC_CORERESET in DBG_DEMCR
-//    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
-//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0000 );          // unset C_DEBUGEN in DBG_DHCSR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );          // unset VC_CORERESET in DBG_DEMCR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0000 );          // unset C_DEBUGEN in DBG_DHCSR
 
     //to reset:
-    comArrayAdd( &myCom, AP_WRITE1_CMD, SCS_AIRCR );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x05FA0004 );
+    //comArrayAdd( &myCom, AP_WRITE1_CMD, SCS_AIRCR );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x05FA0004 );
 
     // write to ram:
     comArrayAdd( &myCom, AP_WRITE1_CMD, 0x20000000 );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x01010101 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x00000000 );
     //comArrayAdd( &myCom, AP_WRITE3_CMD, 0xFF00FF00 );
 
 
