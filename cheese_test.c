@@ -13,18 +13,97 @@
 #include "cheese_comSWD.h"
 #include "cheese_registers.h"
 
+#define OFFSET_FLASH_ACR 0x00
+#define OFFSET_FLASH_KEYR 0x04
+#define OFFSET_FLASH_OPTKEYR 0x08
+#define OFFSET_FLASH_SR 0x0C
+#define OFFSET_FLASH_CR 0x10
+#define OFFSET_FLASH_AR 0x14
+#define OFFSET_FLASH_OBR 0x1C
+#define OFFSET_FLASH_WRPR 0x20
 
+
+struct mcuInfo
+{
+    uint32_t    partno;
+    uint32_t    baseDBG;
+    uint32_t    baseFLASH;
+    const char  description[64];
+};
+
+
+struct mcuInfo stm_info[] = {
+#include "stm_partno_registers.inc"
+};
+const uint32_t stm_info_entry_count = 9;
 
 // general debug and test function
 void cheese_test( void )
 {
     int reply = 0;
-    uint32_t baseAddr = 0xE000E000;
+
+    uint32_t debugBaseAddr = 0x0;
+    uint32_t flashBaseAddr = 0x0;
+    uint32_t partno = 0;
+    uint32_t partindex = 0;
+
+    //find partno... either from RomTable or from MCU registers:
+//    printf( "0x40015800 (MCU_IDCODE): 0x%08X\n", comArray_readWord( 0x40015800 ) & 0xFFF );      //STM32L053
+//    printf( "0xE0042000: 0x%08X\n", comArray_readWord( 0xE0042000 ) & 0xFFF );      //STM32F303
+//    printf( "0xE00E4000: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
+//    printf( "0xE000ED00: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
+
+    for (size_t i = 0; i < stm_info_entry_count; i++)
+    {
+        if ( (comArray_readWord( stm_info[i].baseDBG ) & 0xFFF ) == stm_info[i].partno )
+        {
+            partindex = i;
+            partno = stm_info[i].partno;
+            debugBaseAddr = stm_info[i].baseDBG;
+            flashBaseAddr = stm_info[i].baseFLASH;
+            printf( "found partno: 0x%X at index %d: %s\n", partno, partindex, stm_info[i].description );
+            printf( "debug base: 0x%08X\nflash base: 0x%08X\n", debugBaseAddr, flashBaseAddr );
+        }
+    }
+
+    printf( "0x08003000: 0x%08X \n", comArray_readWord( 0x08003000 ) );    //FLASH_PEKEYR
+    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
+    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
+    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );
+    printf( "FLASH (OFFSET_FLASH_WRPR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_WRPR ) );
 
 
-//    uint32_t base = 0x08004000;
-//    comArray_writeWord( base, 0xFFFF0000 );
-//    printf( "test new comArray_readWord(): 0x%08X\n", comArray_readWord( base ) );
+    comArray myCom;
+    comArrayInit( &myCom );
+    comArray_prepAPaccess( &myCom, 0, 0);
+    comArrayAdd( &myCom, AP_WRITE0_CMD, 0x22000002 );               // CSW --> no auto increment
+    //write starting Transfer Address Register (TAR):
+    comArrayAdd( &myCom, AP_WRITE1_CMD, flashBaseAddr + OFFSET_FLASH_KEYR );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x45670123 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x45670123 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xCDEF89AB );
+
+    comArrayAdd( &myCom, AP_WRITE1_CMD, flashBaseAddr + OFFSET_FLASH_CR );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
+    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
+
+    //comArrayAdd( &myCom, AP_WRITE1_CMD, 0x08003000 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );
+
+    //comArrayAdd( &myCom, AP_WRITE1_CMD, 0x08003000 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );
+    //comArrayAdd( &myCom, AP_WRITE3_CMD, 0xFFF000F0 );
+
+    comArrayTransfer( &myCom );
+
+    printf( "0x08003000: 0x%08X \n", comArray_readWord( 0x08003000 ) );    //FLASH_PEKEYR
+    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
+    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
+    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );    //printf( "0x08003004: 0x%08X \n", comArray_readWord( 0x08003004 ) );
+
+
+    return;
 
 
     //HALT ON RESET:
@@ -88,7 +167,7 @@ void cheese_test( void )
 
 
 
-    printf( "0x40015800 (MCU_IDCODE): 0x%08X\n", comArray_readWord( 0x40015800 ) & 0xFFF );      //STM32L053
+
     printf( "0x40015804 (DBG_CR): 0x%08X\n\n", comArray_readWord( 0x40015804 ) );      //STM32L053
 
 
@@ -98,35 +177,6 @@ void cheese_test( void )
     // to debug on reset: VC_CORRESET=DEMCR[0]=1 and C_DEBUGEN=DHCSR[0]=1
 
 
-    //printf( "0xE0042000: 0x%08X\n", comArray_readWord( 0xE0042000 ) & 0xFFF );      //STM32F303
-    //printf( "0xE00E4000: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
-    //printf( "0xE000ED00: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
-
-    printf( "FLASH (FLASH_PECR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x04 ) );
-    //unlock write:
-    // get FLASH_PECR.PELOCK zero:
-
-    comArray myCom;
-    comArrayInit( &myCom );
-    comArray_prepAPaccess( &myCom, 0, 0);
-    comArrayAdd( &myCom, AP_WRITE0_CMD, 0x22000002 );               // CSW --> no auto increment
-    //write starting Transfer Address Register (TAR):
-    comArrayAdd( &myCom, AP_WRITE1_CMD, 0x40022000 + 0x0C );
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x89ABCDEF );               //fails
-    comArrayAdd( &myCom, AP_WRITE3_CMD, 0x02030405 );
-
-    comArrayTransfer( &myCom );
-
-    //comArray_writeWord( 0x40022000 + 0x0C, 0x89ABCDEF );    //FLASH_PEKEYR
-    //comArray_writeWord( 0x40022000 + 0x0C, 0x02030405 );    //FLASH_PEKEYR
-
-    printf( "FLASH (FLASH_PECR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x04 ) );
-
-    comArray_writeWord( 0X40022000 + 0x10, 0x8C9DAEBF );    //FLASH_PRGKEYR
-    comArray_writeWord( 0X40022000 + 0x10, 0x13141516 );    //FLASH_PRGKEYR
-
-    printf( "FLASH (FLASH_PECR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x04 ) );
-    //comArray_writeWord( 0X40022000 + 0x04
 
  return;
 
