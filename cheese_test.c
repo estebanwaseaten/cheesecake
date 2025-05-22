@@ -11,7 +11,7 @@
 #include "cheese_systeminfo.h"
 #include "cheese_memoryaccess.h"
 #include "cheese_comSWD.h"
-#include "cheese_registers.h"
+//#include "cheese_registers.h"
 
 //these offsets depend on the STM
 #define OFFSET_FLASH_ACR 0x00
@@ -30,12 +30,7 @@
 #define OFFSET_DBG_APB1_FZ 0x08
 #define OFFSET_DBG_APB2_FZ 0x0C
 
-//#define OFFSET_DBG_DFSR 0xDF0
-#define DBG_DHCSR 0xE000EDF0        // 2. enable the bit0 (C_DEBUGEN) --> HALT
-#define DBG_DCRSR 0xE000EDF4
-#define DBG_DCRDR 0xE000EDF8
-#define DBG_DEMCR 0xE000EDFC         // 1. enable the bit0 (VC_CORRESET)...
-#define SCS_AIRCR 0xE000ED0C
+
 
 
 
@@ -61,14 +56,11 @@ struct device
 
 //select first access port and do not increase addresses automatically upon read/write
 #define SEQ_AP0_noInc DP_IDCODE_CMD, 0x0, DP_CTRLSTAT_R_CMD, 0x0, DP_ABORT_CMD, 0x1E, DP_CTRLSTAT_W_CMD, 0x50000000, DP_SELECT_CMD, 0x0, AP_WRITE0_CMD, 0x23000002
-
+#include "stm_device_registers.h"
 struct device devices[] = {
-    { 0x446, { 10, SEQ_AP0_noInc, AP_WRITE1_CMD, DBG_DEMCR, AP_WRITE3_CMD, 0x1, AP_WRITE1_CMD, DBG_DHCSR, AP_WRITE3_CMD, 0xA05F0001 },
-             { 10, SEQ_AP0_noInc, AP_WRITE1_CMD, DBG_DEMCR, AP_WRITE3_CMD, 0x0, AP_WRITE1_CMD, DBG_DHCSR, AP_WRITE3_CMD, 0xA05F0000 },
-             { 8, SEQ_AP0_noInc, AP_WRITE3_CMD, SCS_AIRCR, AP_WRITE3_CMD, 0x05FA0004 },
-             "STM32F302xD(E)/303xD(E) & STM32F398xE",
-         },
+    #include "stm_device_sequences.inc"
 };
+
 
 
 struct mcuInfo stm_info[] = {
@@ -114,8 +106,8 @@ Related Content
             printf( "debug base: 0x%08X\nflash base: 0x%08X\n", debugBaseAddr, flashBaseAddr );
         }
     }
-    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( DBG_DEMCR ) );
-    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( DBG_DHCSR ) );
+    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
+    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
 
 
     printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
@@ -139,15 +131,15 @@ Related Content
     comArrayAdd( &myCom, AP_WRITE0_CMD, 0x23000002 );               // CSW --> no auto increment 0x23000012???              0x23000001 --> half words
 
     //To Halt on reset:
-    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, M4_DBG_DEMCR );    //TAR
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0x1 );          // set VC_CORERESET in DBG_DEMCR
-    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, M4_DBG_DHCSR );    //TAR
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0001 );          // set C_DEBUGEN in DBG_DHCSR
 
     //unhalt on reset:
-    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DEMCR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, M4_DBG_DEMCR );    //TAR
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0x0 );          // unset VC_CORERESET in DBG_DEMCR
-    comArrayAdd( &myCom, AP_WRITE1_CMD, DBG_DHCSR );    //TAR
+    comArrayAdd( &myCom, AP_WRITE1_CMD, M4_DBG_DHCSR );    //TAR
     comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0000 );          // unset C_DEBUGEN in DBG_DHCSR
 
     //to reset:
