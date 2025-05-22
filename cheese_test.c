@@ -49,6 +49,28 @@ struct mcuInfo
 };
 
 
+struct device
+{
+    uint32_t    partno;
+    uint32_t    haltOnReset[65];    //[0]=number of elements; [odd]=cmd, [even]=data
+    uint32_t    unhaltOnReset[65];
+    uint32_t    reset[65];
+
+    const char  description[64];
+};
+
+//select first access port and do not increase addresses automatically upon read/write
+#define SEQ_AP0_noInc DP_IDCODE_CMD, 0x0, DP_CTRLSTAT_R_CMD, 0x0, DP_ABORT_CMD, 0x1E, DP_CTRLSTAT_W_CMD, 0x50000000, DP_SELECT_CMD, 0x0, AP_WRITE0_CMD, 0x23000002
+
+struct device devices[] = {
+    { 0x446, { 10, SEQ_AP0_noInc, AP_WRITE1_CMD, DBG_DEMCR, AP_WRITE3_CMD, 0x1, AP_WRITE1_CMD, DBG_DHCSR, AP_WRITE3_CMD, 0xA05F0001 },
+             { 10, SEQ_AP0_noInc, AP_WRITE1_CMD, DBG_DEMCR, AP_WRITE3_CMD, 0x0, AP_WRITE1_CMD, DBG_DHCSR, AP_WRITE3_CMD, 0xA05F0000 },
+             { 8, SEQ_AP0_noInc, AP_WRITE3_CMD, SCS_AIRCR, AP_WRITE3_CMD, 0x05FA0004 },
+             "STM32F302xD(E)/303xD(E) & STM32F398xE",
+         },
+};
+
+
 struct mcuInfo stm_info[] = {
 #include "stm_partno_registers.inc"
 };
@@ -101,7 +123,7 @@ Related Content
     printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );
     printf( "FLASH (OFFSET_FLASH_WRPR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_WRPR ) );
 
-/*define sequences for different MCUs like (sequences off address value pairs)
+    /*define sequences for different MCUs like (sequences off address value pairs)
     - set halt on reset,
     - unset halt on reset,
     - reset,
