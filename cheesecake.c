@@ -3,7 +3,7 @@
 *  Initial Strategy was: using the debug port to access all the possible information and somehow extract the exact model of the chip.
 *  Easier might be: probe a few MCU device ID code locations and see if we can identify the chip agains a list of known chips...
 *  Short term goal though is to get any data written onto the flash memory...
-*      
+*
 * Copyright (C) 2025 Daniel Wegkamp
 */
 
