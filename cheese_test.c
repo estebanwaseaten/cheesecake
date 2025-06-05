@@ -43,16 +43,32 @@ struct mcuInfo
     const char  description[64];
 };
 
+enum
+{
+    SEQ_HALT_ON_RESET,
+    SEQ_UNHALT_ON_RESET,
+    SEQ_RESET,
+};
 
 struct device
 {
     uint32_t    partno;
+
     uint32_t    haltOnReset[65];    //[0]=number of elements; [odd]=cmd, [even]=data
     uint32_t    unhaltOnReset[65];
     uint32_t    reset[65];
+    uint32_t    unlockFlash[65];
 
     const char  description[64];
 };
+
+
+struct mcuInfo stm_info[] = {
+#include "stm_partno_registers.inc"
+};
+const uint32_t stm_info_entry_count = sizeof(stm_info) / sizeof( stm_info[0] );//9;
+
+
 
 //select first access port and do not increase addresses automatically upon read/write
 #define SEQ_AP0_noInc DP_IDCODE_CMD, 0x0, DP_CTRLSTAT_R_CMD, 0x0, DP_ABORT_CMD, 0x1E, DP_CTRLSTAT_W_CMD, 0x50000000, DP_SELECT_CMD, 0x0, AP_WRITE0_CMD, 0x23000002
@@ -60,13 +76,44 @@ struct device
 struct device devices[] = {
     #include "stm_device_sequences.inc"
 };
+const uint32_t devices_entry_count = sizeof(devices) / sizeof( devices[0] );//9;
 
 
+int findDeviceIndex( uint32_t partno )
+{
+    for (int i = 0; i < devices_entry_count; i++ )
+    {
+        if( devices[i].partno == partno )
+        {
+            return i;
+        }
+    }
+    return -1;
+}
 
-struct mcuInfo stm_info[] = {
-#include "stm_partno_registers.inc"
-};
-const uint32_t stm_info_entry_count = 9;
+void executeSequence( int deviceIndex, int sequenceIndex )
+{
+    if ( deviceIndex >= devices_entry_count )
+    {
+        printf( "execute Sequence() error: device index does not exist!\n");
+        return;
+    }
+    switch( sequenceIndex )
+    {
+        case SEQ_HALT_ON_RESET:
+            com_transferSequence( devices[deviceIndex].haltOnReset );
+            break;
+        case SEQ_UNHALT_ON_RESET:
+            com_transferSequence( devices[deviceIndex].unhaltOnReset );
+            break;
+        case SEQ_RESET:
+            com_transferSequence( devices[deviceIndex].reset );
+            break;
+        default:
+            break;
+    }
+}
+
 
 // general debug and test function
 void cheese_test( void )
@@ -78,9 +125,7 @@ void cheese_test( void )
     uint32_t partno = 0;
     uint32_t partindex = 0;
 
-
-
-    //FLASH MIGHT BE 16bit...
+        //FLASH MIGHT BE 16bit...
     /*
 
 The issue is that you can also access flash with 16-bit access not 32. When I changed the DAP CSW to give 16-bit access the problem goes away :)
@@ -106,10 +151,22 @@ Related Content
             printf( "debug base: 0x%08X\nflash base: 0x%08X\n", debugBaseAddr, flashBaseAddr );
         }
     }
+
+    int deviceIndex = findDeviceIndex( partno );
+    printf( "deviceIndex is %d!\n", deviceIndex );
+
+
+    //executeSequence( 1, SEQ_UNHALT_ON_RESET );
+    //executeSequence( 1, SEQ_RESET );
+
+    
+
+
+
+    return;
+
     printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
     printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
-
-
     printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
     printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
     printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );

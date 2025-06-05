@@ -130,6 +130,43 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index )       //index star
     return myComArray->replyArray32[index*2 + 1];
 }
 
+int com_transferSequence( uint32_t *sequence )
+{
+    int SWDPIfile = open("/dev/SWDPI", O_RDWR | O_SYNC);
+    if( SWDPIfile < 0 )
+    {
+        return -1;
+    }
+
+    if (sequence[0] == 0)
+    {
+        printf( "com_transferSequence() error: sequence empty!\n");
+    }
+
+    write( SWDPIfile, &sequence[1], sequence[0]*2*4 );             //in bytes. each commandsDone has 4 bytes
+    read( SWDPIfile, &sequence[1], sequence[0]*2*4 );
+
+    //check for errors:
+    for (size_t i = 0; i < sequence[0]; i++)
+    {
+        if( (sequence[i*2 + 1] >> 24) == 2 ) //if ACK = wait
+        {
+            printf( "SWD transfer error, received WAIT on transfer #%d\n", i);
+            close( SWDPIfile );
+            return -2;
+        }
+        else if( (sequence[i*2 + 1] >> 24) == 4 ) //if ACK = fail
+        {
+            printf( "SWD transfer error, received FAIL on transfer #%d\n", i);
+            close( SWDPIfile );
+            return -4;
+        }
+    }
+
+    close( SWDPIfile );
+    return 0;
+}
+
 int comArrayTransfer( comArray *myComArray )
 {
 

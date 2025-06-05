@@ -25,6 +25,10 @@ typedef struct comArray
 } comArray;
 
 
+//not using the comArray:
+int com_transferSequence( uint32_t *sequence );
+
+//using the comArray
 void comArrayInit( comArray *myComArray );
 int comArrayClear( comArray *myComArray );
 int comArrayAdd( comArray *myComArray, uint32_t cmd, uint32_t val );

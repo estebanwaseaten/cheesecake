@@ -125,7 +125,7 @@ int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data )
     return 0;
 }
 
-
+//some weird overlapping reads
 
 // base offset needs to be aligned to 128 (0x80) bytes (corresponds to 32 words which is the smallest mutliple that the device driver will transfer (when subtracting the initialisiation data))
 // this ensures, that we stay within a region where the automatic address increase works
@@ -143,17 +143,22 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
     uint32_t wordsTransferredThisRun = 0;
     uint32_t wordsStored = 0;
 
+    uint8_t  progressIndicated = 0;
+
     comArrayInit( &localCom );
 
-    while( wordsTransferred < wordCount )      //loop until all words have been received
+    while( wordsTransferred < wordCount )       //loop until all words have been received
     {
-        wordsTransferredThisRun = 0;    //important: when we are done, this variable is not updated anymore, so infinite loop would result if we do not set i t to zero.
+        wordsTransferredThisRun = 0;            //important: when we are done, this variable is not updated anymore, so infinite loop would result if we do not set it to zero.
         comArray_prepMemAccess( &localCom, 0x0, baseAddr + wordsStored * 4 );        //prepare transaction
         uint32_t startIndex = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );           //dummy read - does not count yet
 
+        //actual transferred data has to be aligned to 1024 bit boundary
         while( (wordsTransferred < wordCount) && ( wordsTransferredThisRun < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
         {
-            wordsTransferredThisRun = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            //wordsTransferredThisRun = comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            comArrayAdd( &localCom, AP_READ3_CMD, 0x0 );
+            wordsTransferredThisRun++;                      //only count actual data transfers, otherwise 32 does not align with the boundary
             wordsTransferred++;
         }
 
@@ -166,15 +171,28 @@ int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffe
             return reply;
         }
 
-        for( int i = startIndex; i < wordsTransferredThisRun; i++ )         //loop from this runs indices
+        for( int i = startIndex; i < wordsTransferredThisRun + startIndex; i++ )         //loop from this runs indices
         {
             returnBuffer[wordsStored] = comArrayRead( &localCom, i );
             wordsStored++;
         }
+
+        float progress = 100.0*(float)wordsTransferred/(float)wordCount;
+        if( progress > progressIndicated )
+        {
+            printf(".");
+            progressIndicated++;
+        }
     }
+
+    printf("\n");
 
     return 0;
 }
+
+//there is some memory issue where 0x1000 and 0x1010
+// are overwritten with 0x0000 and 0x0010
+// 0x2000 - 0x2030 are overwritten with 0x1000 - 0x1030
 
 void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset )
 {
@@ -220,7 +238,7 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
         {
             printf( "0x%08X: ", i*4 + newBaseAddr );
         }
-        printf( "%08X ", dataArray[i] );          //display ACK
+        printf( "%08X ", dataArray[i] );
         //printf( "%08X ", dataArray[i] );                                   //do not display ACK
 
         if( ( ( i + 1 ) % 4) == 0 )
