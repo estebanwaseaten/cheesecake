@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "cheese_memoryaccess.h"
 #include "cheese_registers.h"
@@ -111,7 +112,8 @@ int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data )
 
         while( (wordsTransferred < wordCount) && ( wordsTransferredThisRun < 32 ) )   //?????aligns with 1024 bit boundary of the address increase... what if w e choose stupid offset???
         {
-            wordsTransferredThisRun = comArrayAdd( &localCom, AP_WRITE3_CMD, data[wordsTransferred] );
+            comArrayAdd( &localCom, AP_WRITE3_CMD, data[wordsTransferred] );
+            wordsTransferredThisRun++;
             wordsTransferred++;
         }
 
@@ -334,4 +336,36 @@ int stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the n
     //free( debugArray );
     fclose( file );
     return 0;
+}
+
+int stmWrite( uint32_t address, char* filenamestr )
+{
+    if( filenamestr == NULL )
+    {
+        return -1;
+    }
+
+    FILE *file = fopen( filenamestr, "r");
+    if( !file )
+    {
+        printf( "file does not exist - abort!\n" );
+        return -1;
+    }
+
+    fseek( file, 0, SEEK_END );
+    int lengthBytes = ftell( file );
+    fseek( file, 0, SEEK_SET );
+
+    int lengthWords = ceil( lengthBytes/4 );
+
+    printf( "%s contains %d bytes (%0.0f words)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4 );
+    //uint8_t binary
+    uint32_t *fileDataArray = calloc( lengthWords, sizeof(uint32_t) );
+
+    int freadReply = fread( fileDataArray, sizeof(uint32_t), lengthWords, file );
+
+    reply = stmWriteAligned( address, lengthWords, fileDataArray );
+
+    free( fileDataArray );
+    fclose( file );
 }

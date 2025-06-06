@@ -80,6 +80,10 @@ int main( int argc, char *argv[] )
         //printf( "-stmdump\n");
         stmDump( param2, param3 );
     }
+    else if ( strcmp(argv[1], "-stmwrite") == 0 )
+    {
+        stmWrite( param2, argstr3 );
+    }
 
     return 0;
 }

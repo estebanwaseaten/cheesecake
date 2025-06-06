@@ -159,11 +159,11 @@ Related Content
     //executeSequence( 1, SEQ_UNHALT_ON_RESET );
     //executeSequence( 1, SEQ_RESET );
 
-    
 
 
 
-    return;
+
+//    return;
 
     printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
     printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
