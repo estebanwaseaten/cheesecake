@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>  //for open()s
 
 #include "cheese_utils.h"
 #include "cheese_registers.h"
@@ -50,6 +51,17 @@ int main( int argc, char *argv[] )
                 param3 = strtol( argv[3], &ptr2, 0 );
             }
         }
+    }
+
+    int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
+    if( cake < 0 )
+    {
+        printf( "SWDPI Kernel Module is not installed!\n" );
+        return -1;
+    }
+    else
+    {
+        close( cake );
     }
 
     if( strcmp(argstr1, "") == 0 )

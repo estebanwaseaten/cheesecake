@@ -33,14 +33,16 @@
 
 //DEVICE registers:
 //probaly also works on cortex M3 and M1? maybe?
-#define M4_DBG_DFSR     0xE000ED30        // from Arm® Cortex®-M4 Processor Technical Reference Manual - Revision: r0p1
-#define M4_DBG_DHCSR    0xE000EDF0        // 2. enable the bit0 (C_DEBUGEN) --> HALT
-#define M4_DBG_DCRSR    0xE000EDF4
-#define M4_DBG_DCRDR    0xE000EDF8
-#define M4_DBG_DEMCR    0xE000EDFC         // 1. enable the bit0 (VC_CORRESET)...
+#define M0_M4_DBG_DFSR     0xE000ED30        // from Arm® Cortex®-M4 Processor Technical Reference Manual - Revision: r0p1
+#define M0_M4_DBG_DHCSR    0xE000EDF0        // 2. enable the bit0 (C_DEBUGEN) --> HALT
+#define M0_M4_DBG_DCRSR    0xE000EDF4
+#define M0_M4_DBG_DCRDR    0xE000EDF8
+#define M0_M4_DBG_DEMCR    0xE000EDFC         // 1. enable the bit0 (VC_CORRESET)...
 
-#define M3_M4_CPUID        0xE000ED00
-#define M3_M4_SCS_AIRCR    0xE000ED0C
+#define M0_M3_M4_CPUID        0xE000ED00
+#define M0_M3_M4_SCS_AIRCR    0xE000ED0C
+
+
 
 //STM32F303
 #define STM32F303xE_FLASHBASE  0x40022000

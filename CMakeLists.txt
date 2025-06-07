@@ -16,6 +16,7 @@ set(SOURCE_LIST
 	"cheese_test.c"
 	"cheese_comSWD.c"
 	"cheese_systeminfo.c"
+	"cheese_devices.c"
 	"cheese_memoryaccess.c"
 	"cheesecake.c"
 )

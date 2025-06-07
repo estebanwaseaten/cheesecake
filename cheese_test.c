@@ -10,109 +10,11 @@
 #include "cheese_utils.h"
 #include "cheese_systeminfo.h"
 #include "cheese_memoryaccess.h"
+#include "cheese_devices.h"
 #include "cheese_comSWD.h"
 //#include "cheese_registers.h"
 
-//these offsets depend on the STM
-#define OFFSET_FLASH_ACR 0x00
-#define OFFSET_FLASH_KEYR 0x04
-#define OFFSET_FLASH_OPTKEYR 0x08
-#define OFFSET_FLASH_SR 0x0C
-#define OFFSET_FLASH_CR 0x10
-#define OFFSET_FLASH_AR 0x14
-#define OFFSET_FLASH_OBR 0x1C
-#define OFFSET_FLASH_WRPR 0x20
 
-// system control space: cortex M0: 0xFFF0F003
-// Debug 0xE000EDF0-0xE000EEFFc
-#define OFFSET_DBG_IDCODE 0x00
-#define OFFSET_DBG_CR 0x04
-#define OFFSET_DBG_APB1_FZ 0x08
-#define OFFSET_DBG_APB2_FZ 0x0C
-
-
-
-
-
-struct mcuInfo
-{
-    uint32_t    partno;
-    uint32_t    baseDBG;
-    uint32_t    baseFLASH;
-
-    const char  description[64];
-};
-
-enum
-{
-    SEQ_HALT_ON_RESET,
-    SEQ_UNHALT_ON_RESET,
-    SEQ_RESET,
-};
-
-struct device
-{
-    uint32_t    partno;
-
-    uint32_t    haltOnReset[65];    //[0]=number of elements; [odd]=cmd, [even]=data
-    uint32_t    unhaltOnReset[65];
-    uint32_t    reset[65];
-    uint32_t    unlockFlash[65];
-
-    const char  description[64];
-};
-
-
-struct mcuInfo stm_info[] = {
-#include "stm_partno_registers.inc"
-};
-const uint32_t stm_info_entry_count = sizeof(stm_info) / sizeof( stm_info[0] );//9;
-
-
-
-//select first access port and do not increase addresses automatically upon read/write
-#define SEQ_AP0_noInc DP_IDCODE_CMD, 0x0, DP_CTRLSTAT_R_CMD, 0x0, DP_ABORT_CMD, 0x1E, DP_CTRLSTAT_W_CMD, 0x50000000, DP_SELECT_CMD, 0x0, AP_WRITE0_CMD, 0x23000002
-#include "stm_device_registers.h"
-struct device devices[] = {
-    #include "stm_device_sequences.inc"
-};
-const uint32_t devices_entry_count = sizeof(devices) / sizeof( devices[0] );//9;
-
-
-int findDeviceIndex( uint32_t partno )
-{
-    for (int i = 0; i < devices_entry_count; i++ )
-    {
-        if( devices[i].partno == partno )
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-
-void executeSequence( int deviceIndex, int sequenceIndex )
-{
-    if ( deviceIndex >= devices_entry_count )
-    {
-        printf( "execute Sequence() error: device index does not exist!\n");
-        return;
-    }
-    switch( sequenceIndex )
-    {
-        case SEQ_HALT_ON_RESET:
-            com_transferSequence( devices[deviceIndex].haltOnReset );
-            break;
-        case SEQ_UNHALT_ON_RESET:
-            com_transferSequence( devices[deviceIndex].unhaltOnReset );
-            break;
-        case SEQ_RESET:
-            com_transferSequence( devices[deviceIndex].reset );
-            break;
-        default:
-            break;
-    }
-}
 
 
 // general debug and test function
@@ -122,6 +24,7 @@ void cheese_test( void )
 
     uint32_t debugBaseAddr = 0x0;
     uint32_t flashBaseAddr = 0x0;
+    uint32_t ramBaseAddr = 0x0;
     uint32_t partno = 0;
     uint32_t partindex = 0;
 
@@ -139,21 +42,14 @@ Related Content
 //    printf( "0xE00E4000: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
 //    printf( "0xE000ED00: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
 
-    for (size_t i = 0; i < stm_info_entry_count; i++)
-    {
-        if ( (comArray_readWord( stm_info[i].baseDBG ) & 0xFFF ) == stm_info[i].partno )
-        {
-            partindex = i;
-            partno = stm_info[i].partno;
-            debugBaseAddr = stm_info[i].baseDBG;
-            flashBaseAddr = stm_info[i].baseFLASH;
-            printf( "found partno: 0x%X at index %d: %s\n", partno, partindex, stm_info[i].description );
-            printf( "debug base: 0x%08X\nflash base: 0x%08X\n", debugBaseAddr, flashBaseAddr );
-        }
-    }
+    setCurrentDeviceIndices();      //tries to set correct indices from .inc files
 
-    int deviceIndex = findDeviceIndex( partno );
-    printf( "deviceIndex is %d!\n", deviceIndex );
+    printf( "deviceIndex is %d!\n", currentDeviceIndex );
+    printf( "deviceSequenceIndex is %d!\n", currentSequenceDeviceIndex );
+
+    return;
+
+
 
 
     //executeSequence( 1, SEQ_UNHALT_ON_RESET );
@@ -165,12 +61,12 @@ Related Content
 
 //    return;
 
-    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
-    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
-    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
-    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
-    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );
-    printf( "FLASH (OFFSET_FLASH_WRPR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_WRPR ) );
+//    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
+//    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
+//    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
+//    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
+//    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );
+//    printf( "FLASH (OFFSET_FLASH_WRPR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_WRPR ) );
 
     /*define sequences for different MCUs like (sequences off address value pairs)
     - set halt on reset,
@@ -179,7 +75,7 @@ Related Content
     - ...
     */
 
-    printf( "before 0x20000000: 0x%08X \n", comArray_readWord( 0x20000000 ) );
+    /*printf( "before 0x20000000: 0x%08X \n", comArray_readWord( 0x20000000 ) );
 
 
     comArray myCom;
@@ -239,9 +135,9 @@ return;
 
 
 
-    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );
-    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );
-    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );    //printf( "0x08003004: 0x%08X \n", comArray_readWord( 0x08003004 ) );
+//    printf( "FLASH (OFFSET_FLASH_SR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_SR ) );/
+//    printf( "FLASH (OFFSET_FLASH_CR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_CR ) );/
+//    printf( "FLASH (OFFSET_FLASH_AR): 0x%08X\n", comArray_readWord( flashBaseAddr + OFFSET_FLASH_AR ) );    //printf( "0x08003004: 0x%08X \n", comArray_readWord( 0x08003004 ) );
 
 
     return;

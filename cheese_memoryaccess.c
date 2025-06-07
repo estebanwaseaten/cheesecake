@@ -361,10 +361,21 @@ int stmWrite( uint32_t address, char* filenamestr )
     printf( "%s contains %d bytes (%0.0f words)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4 );
     //uint8_t binary
     uint32_t *fileDataArray = calloc( lengthWords, sizeof(uint32_t) );
-
     int freadReply = fread( fileDataArray, sizeof(uint32_t), lengthWords, file );
 
-    reply = stmWriteAligned( address, lengthWords, fileDataArray );
+    // find system
+
+    // 1. stop core:
+
+
+
+    // 2. write to RAM
+    //reply = stmWriteAligned( address, lengthWords, fileDataArray );
+
+
+    // 3. set program counter and start core:
+
+
 
     free( fileDataArray );
     fclose( file );
