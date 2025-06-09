@@ -13,6 +13,7 @@
 #include "cheese_memoryaccess.h"
 #include "cheese_registers.h"
 #include "cheese_comSWD.h"
+#include "cheese_devices.h"
 
 extern int reply;
 
@@ -364,17 +365,33 @@ int stmWrite( uint32_t address, char* filenamestr )
     int freadReply = fread( fileDataArray, sizeof(uint32_t), lengthWords, file );
 
     // find system
+    initDevice();
 
     // 1. stop core:
+    currentDeviceExecuteSequence( SEQ_HALT_ON_RESET );      //this sequences depend on the processor
+    currentDeviceExecuteSequence( SEQ_RESET );
 
-
-
+    sleep(1);
     // 2. write to RAM
-    //reply = stmWriteAligned( address, lengthWords, fileDataArray );
+    reply = stmWriteAligned( address, lengthWords, fileDataArray );
 
 
     // 3. set program counter and start core:
+    // a) Update vector table entry in 0xe000ed08 to SRAM start position 0x20000000.    //after reset vector table is at 0x0
+    // b) Update R15(PC) with reset vector address. It locates at second word position in firmware.
+    //      set Program Counter to vector_table[1] ?
+    // c) Update R13(SP) with stack address defined in first word in firmware.
+    //      set stack pointer to vector_table[0] maybe
+    //in my words:
+    // a) make VTOR point to start of RAM (where we just wrote our binary data to - the binary data starts with the vector table)
+    currentDeviceWriteDeviceRegister( DEV_REG_VTOR, 0x20000000 );
+    // b) set SP register to first word of vector table (index 0)
+    currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[0] );
+    // c) set PC register to second word of vector table (index 1)
+    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, fileDataArray[1] );   //that is where we return to after leaving debug?
 
+
+    currentDeviceExecuteSequence( SEQ_UNHALT );
 
 
     free( fileDataArray );

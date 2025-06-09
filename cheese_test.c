@@ -12,7 +12,7 @@
 #include "cheese_memoryaccess.h"
 #include "cheese_devices.h"
 #include "cheese_comSWD.h"
-//#include "cheese_registers.h"
+#include "stm_registers.h"
 
 
 
@@ -42,24 +42,59 @@ Related Content
 //    printf( "0xE00E4000: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
 //    printf( "0xE000ED00: 0x%08X\n", comArray_readWord( 0xE00E4000 ) & 0xFFF );      //STM32H503
 
-    setCurrentDeviceIndices();      //tries to set correct indices from .inc files
+//    initDevice();      //tries to set correct indices from .inc files
 
-    printf( "deviceIndex is %d!\n", currentDeviceIndex );
-    printf( "deviceSequenceIndex is %d!\n", currentSequenceDeviceIndex );
+//    printf( "deviceIndex is %d!\n", currentDeviceIndex );
+//    printf( "deviceSequenceIndex is %d!\n", currentSequenceDeviceIndex );
 
-    return;
+    //executeSequence(currentSequenceDeviceIndex, SEQ_HALT);                  //DOES NOT WORK
+    //executeSequence(currentSequenceDeviceIndex, SEQ_HALT_ON_RESET);       // WORKS
+    //executeSequence(currentSequenceDeviceIndex, SEQ_RESET);
 
 
 
 
-    //executeSequence( 1, SEQ_UNHALT_ON_RESET );
-    //executeSequence( 1, SEQ_RESET );
+    comArray myCom;
+    comArrayInit( &myCom );
+    comArray_prepAPaccess( &myCom, 0, 0);
+    comArrayAdd( &myCom, AP_WRITE0_CMD, 0x23000002 );               // CSW --> no auto increment 0x23000012???              0x23000001 --> half words
 
+
+    //To Halt
+//    comArrayAdd( &myCom, AP_WRITE1_CMD, M0_M4_DBG_DHCSR );      //TAR
+//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0001 );           // set C_DEBUGEN in DBG_DHCSR
+
+    //THIS ALONE IS WORKING:
+//    comArrayAdd( &myCom, AP_WRITE1_CMD, M0_M4_DBG_DHCSR );      //TAR
+//    comArrayAdd( &myCom, AP_WRITE3_CMD, 0xA05F0003 );           // set HALT BIT in DBG_DHCSR
+//    comArrayTransfer( &myCom );
 
 
 
 
 //    return;
+
+    int response = 0;
+
+    initDevice();
+    //currentDeviceExecuteSequence( SEQ_UNHALT );           //works perfeclty well
+    response = currentDeviceExecuteSequence( SEQ_HALT_ON_RESET );      //works perfeclty well
+    printf("lastcmd: %08X\n", response );
+    response = currentDeviceExecuteSequence( SEQ_RESET );              //works perfeclty well
+    printf("lastcmd: %08X\n", response );
+
+    sleep(1);
+
+    response = currentDeviceExecuteSequence( SEQ_UNHALT );
+    printf("lastcmd: %08X\n", response );
+    //currentDeviceExecuteSequence( SEQ_RESET );
+
+    com_writeWord( 0x20000000, 0xFFFF5678 );
+    printf( "\nword: 0x%08X\n", com_readWord( 0x20000000 ) );
+
+
+    return;
+
 
 //    printf( "DBG_DEMCR: 0x%08X\n", comArray_readWord( M4_DBG_DEMCR ) );
 //    printf( "DBG_DHCSR: 0x%08X\n\n", comArray_readWord( M4_DBG_DHCSR ) );
@@ -177,13 +212,13 @@ return;
     //STM32L0x3                 Write protection register 2 (FLASH_WRPROT2): 0x80
 
 
-    printf( "FLASH (FLASH_ACR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x00 ) );
-    printf( "FLASH (FLASH_PECR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x04 ) );
-    printf( "FLASH (FLASH_PDKEYR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x08 ) );
-    printf( "FLASH (FLASH_PEKEYR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x0C ) );
-    printf( "FLASH (FLASH_PRGKEYR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x10 ) );
-    printf( "FLASH (FLASH_OPTKEYR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x14 ) );
-    printf( "FLASH (FLASH_SR): 0x%08X\n", comArray_readWord( 0X40022000 + 0x18 ) );
+    printf( "FLASH (FLASH_ACR): 0x%08X\n", com_readWord( 0X40022000 + 0x00 ) );
+    printf( "FLASH (FLASH_PECR): 0x%08X\n", com_readWord( 0X40022000 + 0x04 ) );
+    printf( "FLASH (FLASH_PDKEYR): 0x%08X\n", com_readWord( 0X40022000 + 0x08 ) );
+    printf( "FLASH (FLASH_PEKEYR): 0x%08X\n", com_readWord( 0X40022000 + 0x0C ) );
+    printf( "FLASH (FLASH_PRGKEYR): 0x%08X\n", com_readWord( 0X40022000 + 0x10 ) );
+    printf( "FLASH (FLASH_OPTKEYR): 0x%08X\n", com_readWord( 0X40022000 + 0x14 ) );
+    printf( "FLASH (FLASH_SR): 0x%08X\n", com_readWord( 0X40022000 + 0x18 ) );
 
     // READ memory: just read
     // WRITE/ERASE memory: The operation will complete when the EOP bit of FLASH_SR register rises
@@ -206,7 +241,7 @@ return;
 
 
 
-    printf( "0x40015804 (DBG_CR): 0x%08X\n\n", comArray_readWord( 0x40015804 ) );      //STM32L053
+    printf( "0x40015804 (DBG_CR): 0x%08X\n\n", com_readWord( 0x40015804 ) );      //STM32L053
 
 
 
@@ -227,7 +262,7 @@ return;
         printf( "0x%08X: 0x%08X\n", base + 4*i, data[i]);
     }
 
-    comArray_writeWord( base, 0xFFFF0000 );
+    com_writeWord( base, 0xFFFF0000 );
 
     comArray_getSWDerr();
 

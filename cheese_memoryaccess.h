@@ -23,8 +23,8 @@ int stmWrite( uint32_t address, char* filenamestr );
 
 //lower level
 void align2mem( uint32_t *baseAddr, uint32_t *wordCount, uint32_t *baseOffset );
-int stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer );      //*baseOffset = ( *baseAddr % 0x80 );
-int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data );
+int  stmReadAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *returnBuffer );      //*baseOffset = ( *baseAddr % 0x80 );
+int  stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data );
 
 //prints file contents
 void fileprint( char *path, int wordsToRead );

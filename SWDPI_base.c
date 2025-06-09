@@ -163,7 +163,7 @@ static int SWDGPIOBBD_open(struct inode *inode, struct file *file)
 }
 
 //need to write exactly 64bits (8bytes) or multiples...
-static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t *off)
+static ssize_t SWDGPIOBBD_write(struct file *filp, const char *buf, size_t len, loff_t *off)		//len is in bytes
 {
 	pr_info("\n *** Driver Write Function Called...!!!\n");
 	pr_info("len: %d\n", (int)len);

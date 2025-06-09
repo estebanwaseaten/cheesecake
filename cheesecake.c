@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>  //for open()s
+#include <unistd.h> //for close()
 
 #include "cheese_utils.h"
 #include "cheese_registers.h"

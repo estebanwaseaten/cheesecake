@@ -5,8 +5,8 @@
 * Copyright (C) 2025 Daniel Wegkamp
 */
 
-#ifndef STM_DEVICE_REGISTERS_H
-#define STM_DEVICE_REGISTERS_H
+#ifndef STM_REGISTERS_H
+#define STM_REGISTERS_H
 
 // Serial Wire DEBUG PORT COMMANDS
 #define DP_ABORT_CMD    0x81      // 0b10000001
@@ -31,7 +31,13 @@
 #define AP_WRITE2_CMD    0x93    // 0b10010011
 #define AP_WRITE3_CMD    0xBB    // 0b10111011
 
-//DEVICE registers:
+//aliases:
+#define AP_WRITE_TAR     0x8B
+#define AP_WRITE_DATA    0xBB
+#define AP_READ_DATA     0x9F
+
+
+//DEVICE registers:         //THESE SHOULD BE LOADED FROM stm_device_identification_registers!!
 //probaly also works on cortex M3 and M1? maybe?
 #define M0_M4_DBG_DFSR     0xE000ED30        // from Arm® Cortex®-M4 Processor Technical Reference Manual - Revision: r0p1
 #define M0_M4_DBG_DHCSR    0xE000EDF0        // 2. enable the bit0 (C_DEBUGEN) --> HALT
@@ -41,6 +47,8 @@
 
 #define M0_M3_M4_CPUID        0xE000ED00
 #define M0_M3_M4_SCS_AIRCR    0xE000ED0C
+
+#define M0_M4_DBG_VTOR      0xE000ED08
 
 
 

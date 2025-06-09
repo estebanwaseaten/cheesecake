@@ -26,7 +26,7 @@ typedef struct comArray
 
 
 //not using the comArray:
-int com_transferSequence( uint32_t *sequence );
+int com_transferSequence( uint32_t *sequence );     ///needs to be in multiples of 64bits though
 
 //using the comArray
 void comArrayInit( comArray *myComArray );
@@ -40,7 +40,7 @@ uint32_t comArrayRead( comArray *myComArray, uint32_t index );       //index sta
 int comArrayTransfer( comArray *myComArray );
 
 int comArray_getSWDerr();
-void comArray_writeWord( uint32_t addr, uint32_t word );
-uint32_t comArray_readWord( uint32_t addr );
+void com_writeWord( uint32_t addr, uint32_t word );
+uint32_t com_readWord( uint32_t addr );
 
 #endif

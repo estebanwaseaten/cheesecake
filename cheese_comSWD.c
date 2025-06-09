@@ -95,6 +95,20 @@ int comArray_prepMemAccess( comArray *myComArray, uint8_t accessPort, uint32_t m
     return reply;
 }
 
+int comArray_prepMemAccessNoAutoIncrease( comArray *myComArray, uint8_t accessPort, uint32_t memBase )
+{
+    //aceessing memory happens in the first register bank of the access port:
+    comArray_prepAPaccess( myComArray, accessPort, 0 );
+
+    //configure AP Control/Status Word register (CSW) register:
+    comArrayAdd( myComArray, AP_WRITE0_CMD, 0x23000002 );               // CSW --> NO auto increment
+
+    //write starting Transfer Address Register (TAR):
+    int reply = comArrayAdd( myComArray, AP_WRITE1_CMD, memBase );
+
+    return reply;
+}
+
 int comArrayAdd( comArray *myComArray, uint32_t cmd, uint32_t val )
 {
     if( (myComArray == NULL) || (myComArray->initDone == 0) )
@@ -143,7 +157,7 @@ int com_transferSequence( uint32_t *sequence )
         printf( "com_transferSequence() error: sequence empty!\n");
     }
 
-    write( SWDPIfile, &sequence[1], sequence[0]*2*4 );             //in bytes. each commandsDone has 4 bytes
+    write( SWDPIfile, &sequence[1], sequence[0]*2*4 );             // have to write multiples of 64bits
     read( SWDPIfile, &sequence[1], sequence[0]*2*4 );
 
     //check for errors:
@@ -225,21 +239,15 @@ int comArray_getSWDerr()
     return result;
 }
 
-uint32_t comArray_readWord( uint32_t addr )
+uint32_t com_readWord( uint32_t addr )     //generates a bit of overhead, so not recommended, when many words have to be read
 {
     comArray myComArray;
     comArrayInit( &myComArray );
 
-    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );
-    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
-    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );
-    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );  //write CTRL/STAT
-    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );             //select AP0, bank0
-    comArrayAdd( &myComArray, AP_WRITE0_CMD, 0x22000012 );       //write CSW
+    comArray_prepMemAccessNoAutoIncrease( &myComArray, 0, addr );
 
-    comArrayAdd( &myComArray, AP_WRITE1_CMD, addr );
     comArrayAdd( &myComArray, AP_READ3_CMD, 0x0 );
-    comArrayAdd( &myComArray, DP_READBUF_CMD, 0x0 );
+    comArrayAdd( &myComArray, DP_READBUF_CMD, 0x0 );        //actually read
 
     comArrayTransfer( &myComArray );
     uint32_t result = comArrayRead( &myComArray, 8 );
@@ -248,25 +256,17 @@ uint32_t comArray_readWord( uint32_t addr )
     return result;
 }
 
-void comArray_writeWord( uint32_t addr, uint32_t word )
+void com_writeWord( uint32_t addr, uint32_t word )     //generates a bit of overhead, so not recommended, when many words have to be written
 {
     comArray myComArray;
     comArrayInit( &myComArray );
 
-    comArrayAdd( &myComArray, DP_IDCODE_CMD, 0x0 );
-    comArrayAdd( &myComArray, DP_CTRLSTAT_R_CMD, 0x0 );                  //read potential sticky errors
-    comArrayAdd( &myComArray, DP_ABORT_CMD, 0x1E );
-    comArrayAdd( &myComArray, DP_CTRLSTAT_W_CMD, 0x50000000 );  //write CTRL/STAT
-    comArrayAdd( &myComArray, DP_SELECT_CMD, 0x0 );             //select AP0, bank0
-    comArrayAdd( &myComArray, AP_WRITE0_CMD, 0x22000012 );       //write CSW
+    comArray_prepMemAccessNoAutoIncrease( &myComArray, 0, addr );
 
-    comArrayAdd( &myComArray, AP_WRITE1_CMD, addr );
     comArrayAdd( &myComArray, AP_WRITE3_CMD, word );
-    comArrayAdd( &myComArray, AP_WRITE3_CMD, word );
+    //comArrayAdd( &myComArray, AP_WRITE3_CMD, word );            //this wrtites to next location though...
 
     //anything more???
     comArrayTransfer( &myComArray );
-
     comArrayDestroy( &myComArray );
-
 }
