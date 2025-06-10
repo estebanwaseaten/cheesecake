@@ -386,9 +386,9 @@ int stmWrite( uint32_t address, char* filenamestr )
     // a) make VTOR point to start of RAM (where we just wrote our binary data to - the binary data starts with the vector table)
     currentDeviceWriteDeviceRegister( DEV_REG_VTOR, 0x20000000 );
     // b) set SP register to first word of vector table (index 0)
-    currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[0] );
+    currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[1] );
     // c) set PC register to second word of vector table (index 1)
-    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, fileDataArray[1] );   //that is where we return to after leaving debug?
+    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, fileDataArray[0] );   //that is where we return to after leaving debug?
 
 
     currentDeviceExecuteSequence( SEQ_UNHALT );
