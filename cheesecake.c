@@ -97,6 +97,14 @@ int main( int argc, char *argv[] )
     {
         stmWrite( param2, argstr3 );
     }
+    else if ( strcmp(argv[1], "-stmexecute") == 0 )
+    {
+        stmExecute( param2, argstr3 );
+    }
+    else if ( strcmp(argv[1], "-stmerase") == 0 )
+    {
+        stmErase( param2, param3 );
+    }
 
     return 0;
 }

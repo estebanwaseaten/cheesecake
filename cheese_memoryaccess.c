@@ -339,7 +339,7 @@ int stmDump( uint32_t baseAddr, uint32_t wordCount )        //wordCount is the n
     return 0;
 }
 
-int stmWrite( uint32_t address, char* filenamestr )
+int stmWrite( uint32_t address, char* filenamestr )     //writing in RAM is ok. Writing in flash does not work like this...
 {
     if( filenamestr == NULL )
     {
@@ -376,6 +376,47 @@ int stmWrite( uint32_t address, char* filenamestr )
     reply = stmWriteAligned( address, lengthWords, fileDataArray );
 
 
+    free( fileDataArray );
+    fclose( file );
+}
+
+int stmExecute( uint32_t address, char* filenamestr )     //writing in RAM is ok and executing...
+{
+    if( filenamestr == NULL )
+    {
+        return -1;
+    }
+
+    FILE *file = fopen( filenamestr, "r");
+    if( !file )
+    {
+        printf( "file does not exist - abort!\n" );
+        return -1;
+    }
+
+    fseek( file, 0, SEEK_END );
+    int lengthBytes = ftell( file );
+    fseek( file, 0, SEEK_SET );
+
+    int lengthWords = ceil( lengthBytes/4 );
+
+    printf( "%s contains %d bytes (%0.0f words)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4 );
+    //uint8_t binary
+    uint32_t *fileDataArray = calloc( lengthWords, sizeof(uint32_t) );
+    int freadReply = fread( fileDataArray, sizeof(uint32_t), lengthWords, file );
+
+    // find system
+    initDevice();
+
+    // 1. stop core:
+    currentDeviceExecuteSequence( SEQ_HALT_ON_RESET );      //this sequences depend on the processor
+    currentDeviceExecuteSequence( SEQ_RESET );
+
+    //sleep(1);
+    // 2. write to RAM
+    reply = stmWriteAligned( address, lengthWords, fileDataArray );
+
+
     // 3. set program counter and start core:
     // a) Update vector table entry in 0xe000ed08 to SRAM start position 0x20000000.    //after reset vector table is at 0x0
     // b) Update R15(PC) with reset vector address. It locates at second word position in firmware.
@@ -386,9 +427,9 @@ int stmWrite( uint32_t address, char* filenamestr )
     // a) make VTOR point to start of RAM (where we just wrote our binary data to - the binary data starts with the vector table)
     currentDeviceWriteDeviceRegister( DEV_REG_VTOR, 0x20000000 );
     // b) set SP register to first word of vector table (index 0)
-    currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[1] );
+    currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[0] );
     // c) set PC register to second word of vector table (index 1)
-    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, fileDataArray[0] );   //that is where we return to after leaving debug?
+    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, fileDataArray[1] );   //that is where we return to after leaving debug?
 
 
     currentDeviceExecuteSequence( SEQ_UNHALT );
@@ -396,4 +437,22 @@ int stmWrite( uint32_t address, char* filenamestr )
 
     free( fileDataArray );
     fclose( file );
+}
+
+int stmErase( uint32_t baseAddr, uint32_t wordCount )
+{
+    uint32_t *emptyWords;
+
+    emptyWords = (uint32_t*)calloc( wordCount, sizeof( uint32_t ) );
+
+    initDevice();
+    currentDeviceExecuteSequence( SEQ_HALT_ON_RESET );      //this sequences depend on the processor
+    currentDeviceExecuteSequence( SEQ_RESET );
+
+    reply = stmWriteAligned( baseAddr, wordCount, emptyWords );
+
+    currentDeviceExecuteSequence( SEQ_UNHALT_ON_RESET );      //this sequences depend on the processor
+    currentDeviceExecuteSequence( SEQ_RESET );
+
+    free( emptyWords );
 }
