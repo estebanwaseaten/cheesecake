@@ -17,6 +17,7 @@
 int stmFetch( uint32_t baseAddr, uint32_t wordCount, uint32_t *words );
 
 int stmPrint( uint32_t baseAddr, uint32_t wordCount );
+int stmBinaryPrint( uint32_t addr );
 int stmDump( uint32_t baseAddr, uint32_t wordCount );        //wordCount is the number of words that are supposed to be displayed
 int stmWrite( uint32_t address, char* filenamestr );
 int stmErase( uint32_t baseAddr, uint32_t wordCount );

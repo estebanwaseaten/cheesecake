@@ -254,6 +254,26 @@ int stmPrint( uint32_t baseAddr, uint32_t wordCount )
     return 0;
 }
 
+int stmBinaryPrint( uint32_t addr )
+{
+    uint32_t value = com_readWord( addr );
+
+    printf( "binary word at 0x%08X:\n", addr );
+
+    for( int i = 0; i < 32; i++ )
+    {
+        if( i != 0 )
+        {
+            if( (i % 4) == 0 )
+                printf( " " );
+            if( (i % 16) == 0 )
+                printf( "\n" );
+        }
+        printf( "%d", (value >> (31-i)) & 1 );
+    }
+    printf("\n");
+}
+
 int stmFetch( uint32_t baseAddr, uint32_t wordCount, uint32_t *words )
 {
     //printf("stmFetch()\n");

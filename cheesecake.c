@@ -88,6 +88,12 @@ int main( int argc, char *argv[] )
         //stmprint( param2, param3 );
         stmPrint( param2, param3 );
     }
+    else if ( strcmp(argv[1], "-stmbinprint") == 0 ) // -stmdump base-addr #ofWords
+    {
+        //printf( "-stmprint\n");
+        //stmprint( param2, param3 );
+        stmBinaryPrint( param2 );
+    }
     else if ( strcmp(argv[1], "-stmdump") == 0 ) // -stmdump base-addr #ofWords
     {
         //printf( "-stmdump\n");
