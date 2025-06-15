@@ -99,6 +99,7 @@ int stmWriteAligned( uint32_t baseAddr, uint32_t wordCount, uint32_t *data )
         printf( "stmFetchAligned() error: baseAddr not aligned.\n");
         return -11;
     }
+    printf("writing %d words(0x%X bytes)\n", wordCount, 4*wordCount);
     comArray localCom;
     uint32_t wordsTransferred = 0;
     uint32_t wordsTransferredThisRun = 0;
@@ -377,7 +378,7 @@ int stmWrite( uint32_t address, char* filenamestr )     //writing in RAM is ok. 
     int lengthBytes = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    int lengthWords = ceil( lengthBytes/4 );
+    int lengthWords = ceil( ((double)lengthBytes)/4 );
 
     printf( "%s contains %d bytes (%0.0f words)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4 );
     //uint8_t binary
@@ -418,9 +419,9 @@ int stmExecute( uint32_t address, char* filenamestr )     //writing in RAM is ok
     int lengthBytes = ftell( file );
     fseek( file, 0, SEEK_SET );
 
-    int lengthWords = ceil( lengthBytes/4 );
+    int lengthWords = ceil( ((double)lengthBytes)/4 );
 
-    printf( "%s contains %d bytes (%0.0f words)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4 );
+    printf( "%s contains %d bytes (%f words, rounded: %d)!\n", filenamestr, lengthBytes, 1.0*lengthBytes/4, lengthWords );
     //uint8_t binary
     uint32_t *fileDataArray = calloc( lengthWords, sizeof(uint32_t) );
     int freadReply = fread( fileDataArray, sizeof(uint32_t), lengthWords, file );

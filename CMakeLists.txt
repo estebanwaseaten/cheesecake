@@ -9,7 +9,7 @@ project(cheesecake)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-add_compile_options(-pg ) 		# -Wall -Wextra
+add_compile_options(-pg) 		# -Wall -Wextra
 
 set(SOURCE_LIST
 	"cheese_utils.c"
@@ -26,7 +26,7 @@ set(SOURCE_LIST
 add_executable(${PROJECT_NAME} ${SOURCE_LIST})
 
 target_include_directories(cheesecake PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-
+target_link_libraries(cheesecake m)
 
 set(RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR})
