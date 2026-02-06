@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>  //for open()s
-#include <unistd.h> //for close()
+#include <unistd.h> //for close(), geteuid()
 
 #include "cheese_utils.h"
 #include "cheese_registers.h"
@@ -54,6 +54,12 @@ int main( int argc, char *argv[] )
         }
     }
 
+    if( geteuid() != 0 )
+    {
+        printf( "You did not start this program with root privileges. Please use sudo.\n" );
+        return -1;
+    }
+
     int cake =  open("/dev/SWDPI", O_RDWR | O_SYNC);
     if( cake < 0 )
     {
@@ -72,23 +78,23 @@ int main( int argc, char *argv[] )
         //read_ids( cake );
         //read_mcu_id( cake );
     }
-    else if( strcmp(argv[1], "-info") == 0 ) // -filedump filename #ofWords
+    else if( strcmp(argv[1], "-info") == 0 )
     {
         printf( "-info\n");
         detectSystem();
     }
-    else if( strcmp(argv[1], "-fileprint") == 0 ) // -filedump filename #ofWords
+    else if( strcmp(argv[1], "-fileprint") == 0 )
     {
         printf( "-fileprint\n");
         fileprint( argstr2, param3 );
     }
-    else if ( strcmp(argv[1], "-stmprint") == 0 ) // -stmdump base-addr #ofWords
+    else if ( strcmp(argv[1], "-stmprint") == 0 )
     {
         //printf( "-stmprint\n");
         //stmprint( param2, param3 );
         stmPrint( param2, param3 );
     }
-    else if ( strcmp(argv[1], "-stmbinprint") == 0 ) // -stmdump base-addr #ofWords
+    else if ( strcmp(argv[1], "-stmbinprint") == 0 )
     {
         //printf( "-stmprint\n");
         //stmprint( param2, param3 );
@@ -99,13 +105,17 @@ int main( int argc, char *argv[] )
         //printf( "-stmdump\n");
         stmDump( param2, param3 );
     }
-    else if ( strcmp(argv[1], "-stmwrite") == 0 )
+    else if ( strcmp(argv[1], "-stmwrite") == 0 ) //
     {
         stmWrite( param2, argstr3 );
     }
     else if ( strcmp(argv[1], "-stmexecute") == 0 )
     {
         stmExecute( param2, argstr3 );
+    }
+    else if ( strcmp(argv[1], "-stmrun") == 0 )
+    {
+        stmRun( param2 );
     }
     else if ( strcmp(argv[1], "-stmerase") == 0 )
     {

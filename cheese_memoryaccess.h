@@ -22,6 +22,7 @@ int stmDump( uint32_t baseAddr, uint32_t wordCount );        //wordCount is the 
 int stmWrite( uint32_t address, char* filenamestr );
 int stmErase( uint32_t baseAddr, uint32_t wordCount );
 
+int stmRun( uint32_t address );
 
 int stmExecute( uint32_t address, char* filenamestr );
 

@@ -61,9 +61,6 @@ int comArrayClear( comArray *myComArray )
     return 0;
 }
 
-
-
-
 //prepare communication with access point (memory access)
 int comArray_prepAPaccess( comArray *myComArray, uint8_t accessPort, uint8_t accessPortBank )    //selects AP [31:24] = 0x0, bank [7:4] = 0xF
 {
@@ -181,6 +178,7 @@ int com_transferSequence( uint32_t *sequence )
     return 0;
 }
 
+//open driver file and write & read the communications Array
 int comArrayTransfer( comArray *myComArray )
 {
 
@@ -191,7 +189,7 @@ int comArrayTransfer( comArray *myComArray )
         return -1;
     }
 
-    write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes
+    write( SWDPIfile, myComArray->cmdArray32, myComArray->filling*2*4 );             //in bytes. each commandsDone has 4 bytes. why 2* ?
     read( SWDPIfile, myComArray->replyArray32,  myComArray->filling*2*4 );
 
     //check for errors:

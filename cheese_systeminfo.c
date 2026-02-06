@@ -359,6 +359,28 @@ int extractROMtable( debugComponent *thisComponent )
 int extractCoreSight( debugComponent *thisComponent )
 {
     tabsf( thisComponent->depth ); printf( "*** extractCoreSight:\n" );
+
+    switch( thisComponent->dbcompclass )
+    {
+        case COMPONENTCLASS_SCS:
+            extractSCScomponent( thisComponent );
+            break;
+        case COMPONENTCLASS_BPU:
+            extractBPUComponent( thisComponent );
+            break;
+        case COMPONENTCLASS_DWT:
+            extractDWTComponent( thisComponent );
+            break;
+        case COMPONENTCLASS_FPB:
+            //extractFPBComponent( thisComponent );
+            break;
+        case COMPONENTCLASS_ETM:
+            extractETMComponent( thisComponent );
+            break;
+        default:
+            break;
+    }
+
     return 0;
 }
 
@@ -378,6 +400,12 @@ int extractgenericIP( debugComponent *thisComponent )
         case COMPONENTCLASS_DWT:
             extractDWTComponent( thisComponent );
             break;
+        case COMPONENTCLASS_FPB:
+            //extractFPBComponent( thisComponent );
+            break;
+        case COMPONENTCLASS_ETM:
+            extractETMComponent( thisComponent );
+            break;
         default:
             break;
     }
@@ -386,6 +414,20 @@ int extractgenericIP( debugComponent *thisComponent )
 
 
     return 0;
+}
+
+// Embedded Trace Macrocell
+int extractETMComponent( debugComponent *thisComponent )        //Break Point Unit
+{
+    tabsf( thisComponent->depth );printf( "*** extract ETM component:\n" );
+
+
+}
+
+// Flash Patch & Breakpoint component
+int extractFPBcomponent( debugComponent *thisComponent )
+{
+
 }
 
 // The Cortex®-M0+ BPU implementation provides four breakpoint registers
@@ -400,10 +442,10 @@ int extractDWTComponent( debugComponent *thisComponent )        //Data Watchpoin
 
 }
 
+// System Control Space component
 int extractSCScomponent( debugComponent *thisComponent )
 {
     //starts with CPUID at 0xD00 and ends with DEMCR at 0xDFC
-
     uint32_t registersSCS[0x40] = {0};
     stmFetch( thisComponent->baseAddr + 0xD00, 0x40, registersSCS );
 

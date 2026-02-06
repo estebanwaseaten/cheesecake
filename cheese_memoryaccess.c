@@ -401,6 +401,32 @@ int stmWrite( uint32_t address, char* filenamestr )     //writing in RAM is ok. 
     fclose( file );
 }
 
+int stmRun( uint32_t address )     //writing in RAM is ok and executing...
+{
+    // find system
+    initDevice();
+
+    //currentDeviceExecuteSequence( SEQ_HALT_ON_RESET );      //this sequences depend on the processor
+    //currentDeviceExecuteSequence( SEQ_RESET );
+
+    uint32_t dataArray[2];
+
+    reply = stmReadAligned( address, 2, dataArray );
+
+
+
+    // a) make VTOR point to start of RAM (where we just wrote our binary data to - the binary data starts with the vector table)
+    currentDeviceWriteDeviceRegister( DEV_REG_VTOR, address );
+    // b) set SP register to first word of vector table (index 0)
+    currentDeviceWriteCoreRegister( CORE_REG_SP, dataArray[0] );
+    // c) set PC register to second word of vector table (index 1)
+    currentDeviceWriteCoreRegister( CORE_REG_DBG_RET, dataArray[1] );   //that is where we return to after leaving debug?
+
+
+    currentDeviceExecuteSequence( SEQ_UNHALT );
+
+}
+
 int stmExecute( uint32_t address, char* filenamestr )     //writing in RAM is ok and executing...
 {
     if( filenamestr == NULL )
@@ -446,7 +472,7 @@ int stmExecute( uint32_t address, char* filenamestr )     //writing in RAM is ok
     //      set stack pointer to vector_table[0] maybe
     //in my words:
     // a) make VTOR point to start of RAM (where we just wrote our binary data to - the binary data starts with the vector table)
-    currentDeviceWriteDeviceRegister( DEV_REG_VTOR, 0x20000000 );
+    currentDeviceWriteDeviceRegister( DEV_REG_VTOR, address );
     // b) set SP register to first word of vector table (index 0)
     currentDeviceWriteCoreRegister( CORE_REG_SP, fileDataArray[0] );
     // c) set PC register to second word of vector table (index 1)

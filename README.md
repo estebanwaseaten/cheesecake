@@ -19,11 +19,54 @@ to build and run the application execute
 > ./make.sh
 > sudo ./cheesetest
 
+run sudo ./cheestest with following flags:
+
+-info
+-stmprint #start #length
+-stmbinprint #start (prints 4 bytes)
+-stmdump
+-stmwrite #address filename (writes into RAM)
+-stmexecute #address filename   
+-stmerase
+
+-fileprint
 
 
+example:
+
+sudo ./cheesecake -info
+should return consistent information about the connected STM32. If not, there is probably an issue with cross-talk between the SWD cables.
+
+    SW-DP IDR (IDCODE): 0x2BA01477
+    * Cortex-M4 Core w. FPU (uncomfirmed)
+    * ARM SW-DP version: 0x2, partno: 0xBA01
+    * DP designer: 0x23B (ARM Ltd)
+    scanning for access points:
+    AP-IDR: 0x24770011
+    AP-IDR: 0x00000000
+
+    Found 1 Access Port(s):
+
+    MEM-AP #0 (IDR=0x24770011, AMBA AHB3 bus):
+    * Access Port Information:
+    * BASE: 0xE00FF000 (BASE2: 0x00000000)
+    * AP CFG: 0 (little endian = 0; big endian = 1)
+    * format: 0 (1->ADIv5/0->legacy), present: 0
+    * type: 1, variant: 1, class: 0x8, designer: 0x23B (ARM Ltd), revision: 0x2
+    ...
 
 
+sudo ./cheesecake -stmwrite 0x20000000 ../path/to/binary.bin
+writes binary to memory location 0x2000 0000 (start of RAM)
 
+
+sudo ./cheesecake -stmexecute 0x20000000 ../path/to/binary.bin
+writes binary to memory location 0x2000 0000 (start of RAM)
+and executes code
+
+//does not work
+sudo ./cheesecake -stmrun 0x20000000
+writes binary to memory location 0x2000 0000 (start of RAM)
 
 
 
