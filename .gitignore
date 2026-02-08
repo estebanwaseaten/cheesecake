@@ -6,5 +6,7 @@
 *.order
 build/
 ./cheesetest
+./cheesecake
 cheesetest
+cheesecake
 *.bin
