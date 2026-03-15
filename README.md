@@ -17,16 +17,16 @@ to build and install the kernel module execute
 
 to build and run the application execute
 > ./make.sh
-> sudo ./cheesetest
+> sudo ./cheesecake
 
-run sudo ./cheestest with following flags:
+run sudo ./cheesecake with following flags:
 
 -info
 -stmprint #start #length
 -stmbinprint #start (prints 4 bytes)
 -stmdump
 -stmwrite #address filename (writes into RAM)
--stmexecute #address filename   
+-stmexecute #address filename (writes into RAM and executes code, if linker script is setup correctly, especially position of the vector table...)
 -stmerase
 
 -fileprint
@@ -64,7 +64,7 @@ sudo ./cheesecake -stmexecute 0x20000000 ../path/to/binary.bin
 writes binary to memory location 0x2000 0000 (start of RAM)
 and executes code
 
-//does not work
+//does not work / might work in the meantime
 sudo ./cheesecake -stmrun 0x20000000
 writes binary to memory location 0x2000 0000 (start of RAM)
 
